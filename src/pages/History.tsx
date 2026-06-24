@@ -18,7 +18,7 @@ const WEEK_DAYS = [
 
 export function History() {
   const [activeTab, setActiveTab] = useState<TabType>('history');
-  const { getHistoryStats, getRecurringTasks, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate } = useTaskStore();
+  const { getHistoryStats, getRecurringTasks, addTask, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate } = useTaskStore();
   const history = getHistoryStats();
   const recurringTasks = getRecurringTasks();
   const templates = getTemplates();
@@ -38,6 +38,20 @@ export function History() {
   const [newParamPlaceholder, setNewParamPlaceholder] = useState('');
   const [newParamType, setNewParamType] = useState<'text' | 'number' | 'percent'>('text');
   const [newParamRequired, setNewParamRequired] = useState(false);
+  
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [recurringForm, setRecurringForm] = useState({
+    name: '',
+    details: '',
+    recurrence: 'daily' as TaskRecurrence,
+    weeklyDays: [] as number[],
+    monthlyDay: 1,
+    paramFields: [] as ParamField[],
+  });
+  const [recurringParamLabel, setRecurringParamLabel] = useState('');
+  const [recurringParamPlaceholder, setRecurringParamPlaceholder] = useState('');
+  const [recurringParamType, setRecurringParamType] = useState<'text' | 'number' | 'percent'>('text');
+  const [recurringParamRequired, setRecurringParamRequired] = useState(false);
   
   const handleOpenCreate = () => {
     setEditingTemplate(null);
@@ -118,6 +132,69 @@ export function History() {
         ? prev.weeklyDays.filter((d) => d !== day) 
         : [...prev.weeklyDays, day],
     }));
+  };
+
+  const toggleRecurringDay = (day: number) => {
+    setRecurringForm((prev) => ({
+      ...prev,
+      weeklyDays: prev.weeklyDays.includes(day)
+        ? prev.weeklyDays.filter((d) => d !== day)
+        : [...prev.weeklyDays, day],
+    }));
+  };
+
+  const addRecurringParamField = () => {
+    if (!recurringParamLabel.trim()) return;
+    const newField: ParamField = {
+      key: recurringParamLabel.trim().replace(/\s+/g, '-').toLowerCase(),
+      label: recurringParamLabel.trim(),
+      placeholder: recurringParamPlaceholder.trim() || `请输入${recurringParamLabel}`,
+      type: recurringParamType,
+      required: recurringParamRequired,
+    };
+    setRecurringForm((prev) => ({ ...prev, paramFields: [...prev.paramFields, newField] }));
+    setRecurringParamLabel('');
+    setRecurringParamPlaceholder('');
+    setRecurringParamRequired(false);
+  };
+
+  const removeRecurringParamField = (index: number) => {
+    setRecurringForm((prev) => ({
+      ...prev,
+      paramFields: prev.paramFields.filter((_, i) => i !== index),
+    }));
+  };
+
+  const handleSaveRecurringTask = () => {
+    if (!recurringForm.name.trim()) {
+      alert('请输入任务名称');
+      return;
+    }
+    if (recurringForm.recurrence === 'weekly' && recurringForm.weeklyDays.length === 0) {
+      alert('请至少选择一个星期几');
+      return;
+    }
+    if (recurringForm.recurrence === 'monthly' && (recurringForm.monthlyDay < 1 || recurringForm.monthlyDay > 31)) {
+      alert('请选择有效的日期（1-31）');
+      return;
+    }
+    addTask(
+      recurringForm.name.trim(),
+      recurringForm.details.trim() || undefined,
+      recurringForm.paramFields.length > 0 ? recurringForm.paramFields : undefined,
+      recurringForm.recurrence,
+      recurringForm.weeklyDays.length > 0 ? recurringForm.weeklyDays : undefined,
+      recurringForm.monthlyDay
+    );
+    setShowRecurringModal(false);
+    setRecurringForm({
+      name: '',
+      details: '',
+      recurrence: 'daily',
+      weeklyDays: [],
+      monthlyDay: 1,
+      paramFields: [],
+    });
   };
 
   const getDayName = (dateStr: string) => {
@@ -244,21 +321,30 @@ export function History() {
               <Repeat className="w-6 h-6 text-blue-600" />
               <h2 className="text-lg font-semibold text-gray-800">周期任务管理</h2>
             </div>
-            {recurringTasks.length > 0 && (
+            <div className="flex items-center gap-2">
               <button
-                onClick={resetRecurringTaskStatus}
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+                onClick={() => setShowRecurringModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
               >
-                重置所有周期任务状态
+                <Plus className="w-4 h-4" />
+                创建周期任务
               </button>
-            )}
+              {recurringTasks.length > 0 && (
+                <button
+                  onClick={resetRecurringTaskStatus}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+                >
+                  重置所有周期任务状态
+                </button>
+              )}
+            </div>
           </div>
 
           {recurringTasks.length === 0 ? (
             <div className="text-center py-12">
               <Repeat className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-500 mb-2">暂无周期任务</h3>
-              <p className="text-gray-400">在首页添加任务时设置周期即可创建周期任务</p>
+              <p className="text-gray-400">点击上方按钮创建周期任务</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -544,6 +630,206 @@ export function History() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 {editingTemplate ? '保存修改' : '创建模板'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRecurringModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">创建周期任务</h3>
+              <button
+                onClick={() => setShowRecurringModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[70vh]">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">任务名称 *</label>
+                  <input
+                    type="text"
+                    value={recurringForm.name}
+                    onChange={(e) => setRecurringForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="输入任务名称"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">任务描述信息</label>
+                  <textarea
+                    value={recurringForm.details}
+                    onChange={(e) => setRecurringForm((prev) => ({ ...prev, details: e.target.value }))}
+                    placeholder="输入任务描述信息（可选）"
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">执行频率</label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'daily', label: '每天' },
+                      { value: 'weekly', label: '每周' },
+                      { value: 'monthly', label: '每月' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setRecurringForm((prev) => ({ ...prev, recurrence: option.value as TaskRecurrence }))}
+                        className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          recurringForm.recurrence === option.value
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {recurringForm.recurrence === 'weekly' && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {WEEK_DAYS.map((day) => (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => toggleRecurringDay(day.value)}
+                          className={`px-3 py-2 rounded-lg text-sm transition-colors ${
+                            recurringForm.weeklyDays.includes(day.value)
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {recurringForm.recurrence === 'monthly' && (
+                    <div className="mt-3">
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        value={recurringForm.monthlyDay}
+                        onChange={(e) => setRecurringForm((prev) => ({
+                          ...prev,
+                          monthlyDay: Math.min(31, Math.max(1, parseInt(e.target.value) || 1)),
+                        }))}
+                        className="w-24 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-gray-600">号</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => {}}
+                    className="flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+                  >
+                    {recurringForm.paramFields.length > 0 ? (
+                      <>
+                        <ChevronUp className="w-4 h-4" />
+                        收起参数字段 ({recurringForm.paramFields.length})
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4" />
+                        添加参数字段
+                      </>
+                    )}
+                  </button>
+                  {recurringForm.paramFields.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {recurringForm.paramFields.map((field, index) => (
+                        <div key={index} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                          <span className="text-sm text-gray-700">{field.label}</span>
+                          <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded">
+                            {field.type === 'text' ? '文本' : field.type === 'number' ? '数字' : '百分比'}
+                          </span>
+                          {field.required && (
+                            <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded font-medium">
+                              必填
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeRecurringParamField(index)}
+                            className="ml-auto p-1 text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 flex gap-2 flex-wrap">
+                    <input
+                      type="text"
+                      value={recurringParamLabel}
+                      onChange={(e) => setRecurringParamLabel(e.target.value)}
+                      placeholder="参数名称"
+                      className="flex-1 min-w-[120px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      value={recurringParamPlaceholder}
+                      onChange={(e) => setRecurringParamPlaceholder(e.target.value)}
+                      placeholder="提示文字"
+                      className="flex-1 min-w-[120px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <select
+                      value={recurringParamType}
+                      onChange={(e) => setRecurringParamType(e.target.value as 'text' | 'number' | 'percent')}
+                      className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="text">文本</option>
+                      <option value="number">数字</option>
+                      <option value="percent">百分比</option>
+                    </select>
+                    <label className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg bg-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={recurringParamRequired}
+                        onChange={(e) => setRecurringParamRequired(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700">必填</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addRecurringParamField}
+                      className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      添加
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setShowRecurringModal(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveRecurringTask}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                创建任务
               </button>
             </div>
           </div>
