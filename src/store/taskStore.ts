@@ -8,11 +8,11 @@ interface TaskStore {
   templates: TaskTemplate[];
   addTask: (name: string, details?: string, paramFields?: ParamField[], recurrence?: TaskRecurrence, weeklyDays?: number[], monthlyDay?: number) => void;
   editTask: (id: string, name: string, details?: string, paramFields?: ParamField[], recurrence?: TaskRecurrence, weeklyDays?: number[], monthlyDay?: number) => void;
-  completeTask: (id: string, params?: Record<string, string | number>) => void;
+  completeTask: (id: string, params?: Record<string, string | number | boolean>) => void;
   uncompleteTask: (id: string) => void;
   deleteTask: (id: string) => void;
   updateTaskDetails: (id: string, details: string) => void;
-  updateTaskCompletionParams: (id: string, params: Record<string, string | number>) => void;
+  updateTaskCompletionParams: (id: string, params: Record<string, string | number | boolean>) => void;
   getTodayTasks: () => Task[];
   getRecurringTasks: () => Task[];
   getTodayStats: () => { total: number; completed: number };
@@ -317,7 +317,11 @@ export const useTaskStore = create<TaskStore>()(
                 const hasValue = value !== undefined && value !== '' && (isCalculated || value !== 0);
                 
                 if (hasValue) {
-                  if (typeof value === 'string') {
+                  if (typeof value === 'boolean') {
+                    const trueLabel = field.booleanTrueLabel || '是';
+                    const falseLabel = field.booleanFalseLabel || '否';
+                    displayValue = value ? trueLabel : falseLabel;
+                  } else if (typeof value === 'string') {
                     displayValue = value;
                   } else if (field.type === 'percent') {
                     const decimals = field.decimalPlaces ?? 2;
@@ -327,8 +331,11 @@ export const useTaskStore = create<TaskStore>()(
                     const unit = field.calculationType === 'duration' && field.durationUnit === 'days' ? '天' : '小时';
                     displayValue = `${Number(value).toFixed(decimals)}${unit}`;
                   } else {
-                    displayValue = value;
+                    displayValue = String(value);
                   }
+                } else if (field.type === 'boolean') {
+                  const falseLabel = field.booleanFalseLabel || '否';
+                  displayValue = falseLabel;
                 } else if (!field.required && field.placeholder && !isCalculated) {
                   displayValue = field.type === 'percent' ? `${Number(field.placeholder).toFixed(2)}%` : field.placeholder;
                 } else if (isCalculated) {

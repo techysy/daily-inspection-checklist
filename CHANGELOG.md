@@ -19,6 +19,13 @@ All notable changes to this project will be documented in this file.
 - **参数字段可编辑**：点击已有字段即可修改配置（名称、类型、默认值）
 - **导出报告优化**：新增当日概览区块，包含任务统计，适合微信工作群分享
 - **编辑已完成参数值**：在首页支持修改已完成任务的参数值
+- **历史记录页面创建周期任务**：在历史记录页面直接创建周期任务
+  - 支持设置任务名称、描述信息
+  - 支持选择执行频率（每天/每周/每月）
+  - 支持配置参数字段
+
+- **参数名称重复校验**：添加参数时自动检测名称重复，弹出居中提示
+- **Toast 通知组件**：替换原生 `alert()`，居中显示深色圆角提示框，3秒后自动消失
 
 ### Fixed
 
@@ -30,9 +37,12 @@ All notable changes to this project will be documented in this file.
 
 ### Updated
 
+- **组件架构**：新增 `Toast.tsx` 通知组件、`toastStore.ts` 状态管理
 - **类型定义**：扩展 `ParamField` 接口，添加 `defaultValue` 字段
 - **README文档**：更新文档以反映新功能
 - **CHANGELOG文档**：添加详细的变更记录
+- **README文档**：添加历史记录页面创建周期任务功能说明
+- **CHANGELOG文档**：添加历史记录页面创建周期任务功能记录
 
 ## [1.0.0] - 2026-06-11
 

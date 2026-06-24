@@ -1,10 +1,10 @@
 export type TaskRecurrence = 'daily' | 'weekly' | 'monthly' | 'once';
 
 export interface CompletionParams {
-  [key: string]: string | number;
+  [key: string]: string | number | boolean;
 }
 
-export type ParamFieldType = 'text' | 'number' | 'percent';
+export type ParamFieldType = 'text' | 'number' | 'percent' | 'boolean' | 'calc-percentage' | 'calc-duration';
 
 export type CalculationType = 
   | 'none' 
@@ -22,9 +22,12 @@ export interface ParamField {
   calculationType?: CalculationType;
   numeratorKey?: string;
   denominatorKey?: string;
+  fixedDenominatorValue?: number;
   decimalPlaces?: number;
   durationUnit?: DurationUnit;
-  defaultValue?: string | number;
+  defaultValue?: string | number | boolean;
+  booleanTrueLabel?: string;
+  booleanFalseLabel?: string;
 }
 
 export interface Task {
