@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, ChevronDown, ChevronUp, PlusCircle, X, FileText } from 'lucide-react';
 import { useTaskStore } from '../store/taskStore';
-import type { TaskRecurrence, ParamField, TaskTemplate } from '../types';
+import type { TaskRecurrence, ParamField, TaskTemplate, CalculationType, DurationUnit } from '../types';
 
 const WEEK_DAYS = [
   { value: 1, label: '周一' },
@@ -27,6 +27,12 @@ export function AddTask() {
   const [newParamPlaceholder, setNewParamPlaceholder] = useState('');
   const [newParamType, setNewParamType] = useState<'text' | 'number' | 'percent'>('text');
   const [newParamRequired, setNewParamRequired] = useState(false);
+  const [newParamCalculation, setNewParamCalculation] = useState<CalculationType>('none');
+  const [newParamNumerator, setNewParamNumerator] = useState('');
+  const [newParamDenominator, setNewParamDenominator] = useState('');
+  const [newParamDecimalPlaces, setNewParamDecimalPlaces] = useState(2);
+  const [newParamDurationUnit, setNewParamDurationUnit] = useState<DurationUnit>('hours');
+  const [newParamDefaultValue, setNewParamDefaultValue] = useState('');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   const { addTask, getTemplates, createTaskFromTemplate } = useTaskStore();
@@ -40,17 +46,35 @@ export function AddTask() {
 
   const addParamField = () => {
     if (!newParamLabel.trim()) return;
+    const defaultValue = newParamDefaultValue.trim() !== '' 
+      ? (newParamType === 'number' || newParamType === 'percent' 
+        ? parseFloat(newParamDefaultValue) 
+        : newParamDefaultValue) 
+      : undefined;
+    
     const newField: ParamField = {
       key: newParamLabel.trim().replace(/\s+/g, '-').toLowerCase(),
       label: newParamLabel.trim(),
       placeholder: newParamPlaceholder.trim() || `请输入${newParamLabel}`,
       type: newParamType,
       required: newParamRequired,
+      calculationType: newParamCalculation !== 'none' ? newParamCalculation : undefined,
+      numeratorKey: newParamCalculation !== 'none' ? newParamNumerator : undefined,
+      denominatorKey: newParamCalculation !== 'none' ? newParamDenominator : undefined,
+      decimalPlaces: newParamCalculation !== 'none' ? newParamDecimalPlaces : undefined,
+      durationUnit: newParamCalculation === 'duration' ? newParamDurationUnit : undefined,
+      defaultValue,
     };
     setParamFields((prev) => [...prev, newField]);
     setNewParamLabel('');
     setNewParamPlaceholder('');
     setNewParamRequired(false);
+    setNewParamCalculation('none');
+    setNewParamNumerator('');
+    setNewParamDenominator('');
+    setNewParamDecimalPlaces(2);
+    setNewParamDurationUnit('hours');
+    setNewParamDefaultValue('');
   };
 
   const removeParamField = (index: number) => {
@@ -273,7 +297,14 @@ export function AddTask() {
                   value={newParamPlaceholder}
                   onChange={(e) => setNewParamPlaceholder(e.target.value)}
                   placeholder="提示文字（可选）"
-                  className="flex-1 min-w-[150px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 min-w-[120px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={newParamDefaultValue}
+                  onChange={(e) => setNewParamDefaultValue(e.target.value)}
+                  placeholder="默认值（可选）"
+                  className="flex-1 min-w-[100px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <select
                   value={newParamType}
@@ -302,6 +333,66 @@ export function AddTask() {
                   添加
                 </button>
               </div>
+              {paramFields.length > 0 && (
+                <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <label className="block text-sm font-medium text-blue-700 mb-2">关联计算（可选）</label>
+                  <div className="flex gap-2 flex-wrap">
+                    <select
+                      value={newParamCalculation}
+                      onChange={(e) => setNewParamCalculation(e.target.value as CalculationType)}
+                      className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="none">不计算</option>
+                      <option value="percentage">百分比型</option>
+                      <option value="duration">时间型</option>
+                    </select>
+                    {newParamCalculation !== 'none' && (
+                      <>
+                        <select
+                          value={newParamNumerator}
+                          onChange={(e) => setNewParamNumerator(e.target.value)}
+                          className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">{newParamCalculation === 'duration' ? '选择开始时间' : '选择分子字段'}</option>
+                          {paramFields.map((field) => (
+                            <option key={field.key} value={field.key}>{field.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={newParamDenominator}
+                          onChange={(e) => setNewParamDenominator(e.target.value)}
+                          className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">{newParamCalculation === 'duration' ? '选择结束时间' : '选择分母字段'}</option>
+                            {paramFields.filter((f) => f.key !== newParamNumerator).map((field) => (
+                              <option key={field.key} value={field.key}>{field.label}</option>
+                            ))}
+                          </select>
+                        <select
+                          value={newParamDecimalPlaces}
+                          onChange={(e) => setNewParamDecimalPlaces(Number(e.target.value))}
+                          className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="0">小数位数: 0位</option>
+                          <option value="1">小数位数: 1位</option>
+                          <option value="2">小数位数: 2位</option>
+                          <option value="3">小数位数: 3位</option>
+                        </select>
+                        {newParamCalculation === 'duration' && (
+                          <select
+                            value={newParamDurationUnit}
+                            onChange={(e) => setNewParamDurationUnit(e.target.value as DurationUnit)}
+                            className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="hours">单位: 小时</option>
+                            <option value="days">单位: 天</option>
+                          </select>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {paramFields.length > 0 && (
@@ -320,6 +411,26 @@ export function AddTask() {
                       {field.required && (
                         <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded font-medium">
                           必填
+                        </span>
+                      )}
+                      {field.calculationType && (
+                        <>
+                          <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded font-medium">
+                            {field.calculationType === 'percentage' ? '百分比' : '时间型'}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">
+                            {field.decimalPlaces}位小数
+                          </span>
+                          {field.calculationType === 'duration' && (
+                            <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">
+                              {field.durationUnit === 'hours' ? '小时' : '天'}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      {field.defaultValue !== undefined && (
+                        <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded font-medium">
+                          默认: {field.defaultValue}
                         </span>
                       )}
                       <button

@@ -6,13 +6,13 @@ export function ExportButton() {
   const { completed } = getTodayStats();
 
   const handleExport = () => {
-    const mdContent = exportCompletedTasks();
-    const blob = new Blob([mdContent], { type: 'text/markdown' });
+    const content = exportCompletedTasks();
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const today = new Date().toISOString().split('T')[0];
     const a = document.createElement('a');
     a.href = url;
-    a.download = `巡检清单_${today}.md`;
+    a.download = `巡检报告_${today}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -30,7 +30,7 @@ export function ExportButton() {
       }`}
     >
       <Download className="w-4 h-4" />
-      导出清单 ({completed})
+      导出报告 ({completed})
     </button>
   );
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Calendar, TrendingUp, Repeat, Clock, FileText, Plus, Edit2, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { useTaskStore } from '../store/taskStore';
 import { TaskItem } from '../components/TaskItem';
-import type { TaskRecurrence, ParamField, TaskTemplate } from '../types';
+import type { TaskRecurrence, ParamField, TaskTemplate, CalculationType, DurationUnit } from '../types';
 
 type TabType = 'history' | 'recurring' | 'templates';
 
@@ -38,6 +38,12 @@ export function History() {
   const [newParamPlaceholder, setNewParamPlaceholder] = useState('');
   const [newParamType, setNewParamType] = useState<'text' | 'number' | 'percent'>('text');
   const [newParamRequired, setNewParamRequired] = useState(false);
+  const [newParamCalculation, setNewParamCalculation] = useState<CalculationType>('none');
+  const [newParamNumerator, setNewParamNumerator] = useState('');
+  const [newParamDenominator, setNewParamDenominator] = useState('');
+  const [newParamDecimalPlaces, setNewParamDecimalPlaces] = useState(2);
+  const [newParamDurationUnit, setNewParamDurationUnit] = useState<DurationUnit>('hours');
+  const [newParamDefaultValue, setNewParamDefaultValue] = useState('');
   
   const [showRecurringModal, setShowRecurringModal] = useState(false);
   const [recurringForm, setRecurringForm] = useState({
@@ -105,17 +111,35 @@ export function History() {
   
   const addParamField = () => {
     if (!newParamLabel.trim()) return;
+    const defaultValue = newParamDefaultValue.trim() !== '' 
+      ? (newParamType === 'number' || newParamType === 'percent' 
+        ? parseFloat(newParamDefaultValue) 
+        : newParamDefaultValue) 
+      : undefined;
+    
     const newField: ParamField = {
       key: newParamLabel.trim().replace(/\s+/g, '-').toLowerCase(),
       label: newParamLabel.trim(),
       placeholder: newParamPlaceholder.trim() || `请输入${newParamLabel}`,
       type: newParamType,
       required: newParamRequired,
+      calculationType: newParamCalculation !== 'none' ? newParamCalculation : undefined,
+      numeratorKey: newParamCalculation !== 'none' ? newParamNumerator : undefined,
+      denominatorKey: newParamCalculation !== 'none' ? newParamDenominator : undefined,
+      decimalPlaces: newParamCalculation !== 'none' ? newParamDecimalPlaces : undefined,
+      durationUnit: newParamCalculation === 'duration' ? newParamDurationUnit : undefined,
+      defaultValue,
     };
     setTemplateForm((prev) => ({ ...prev, paramFields: [...prev.paramFields, newField] }));
     setNewParamLabel('');
     setNewParamPlaceholder('');
     setNewParamRequired(false);
+    setNewParamCalculation('none');
+    setNewParamNumerator('');
+    setNewParamDenominator('');
+    setNewParamDecimalPlaces(2);
+    setNewParamDurationUnit('hours');
+    setNewParamDefaultValue('');
   };
   
   const removeParamField = (index: number) => {
@@ -349,7 +373,15 @@ export function History() {
           ) : (
             <div className="space-y-3">
               {recurringTasks.map((task) => (
-                <TaskItem key={task.id} task={task} onDelete={deleteTask} />
+                <TaskItem key={task.id} task={task} onDelete={deleteTask} onEditTemplate={(t) => handleOpenEdit({
+                  id: t.id,
+                  name: t.name,
+                  details: t.details,
+                  recurrence: t.recurrence,
+                  weeklyDays: t.weeklyDays,
+                  monthlyDay: t.monthlyDay,
+                  paramFields: t.paramFields,
+                })} />
               ))}
             </div>
           )}
@@ -560,6 +592,26 @@ export function History() {
                               必填
                             </span>
                           )}
+                          {field.calculationType && (
+                            <>
+                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-600 rounded font-medium">
+                                {field.calculationType === 'percentage' ? '百分比' : '时间型'}
+                              </span>
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">
+                                {field.decimalPlaces}位小数
+                              </span>
+                              {field.calculationType === 'duration' && (
+                                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">
+                                  {field.durationUnit === 'hours' ? '小时' : '天'}
+                                </span>
+                              )}
+                            </>
+                          )}
+                          {field.defaultValue !== undefined && (
+                            <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-600 rounded font-medium">
+                              默认: {field.defaultValue}
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => removeParamField(index)}
@@ -584,7 +636,14 @@ export function History() {
                       value={newParamPlaceholder}
                       onChange={(e) => setNewParamPlaceholder(e.target.value)}
                       placeholder="提示文字"
-                      className="flex-1 min-w-[120px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 min-w-[100px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <input
+                      type="text"
+                      value={newParamDefaultValue}
+                      onChange={(e) => setNewParamDefaultValue(e.target.value)}
+                      placeholder="默认值"
+                      className="flex-1 min-w-[100px] px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <select
                       value={newParamType}
@@ -612,6 +671,66 @@ export function History() {
                       添加
                     </button>
                   </div>
+                  {templateForm.paramFields.length > 0 && (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <label className="block text-sm font-medium text-blue-700 mb-2">关联计算（可选）</label>
+                      <div className="flex gap-2 flex-wrap">
+                        <select
+                          value={newParamCalculation}
+                          onChange={(e) => setNewParamCalculation(e.target.value as CalculationType)}
+                          className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="none">不计算</option>
+                          <option value="percentage">百分比型</option>
+                          <option value="duration">时间型</option>
+                        </select>
+                        {newParamCalculation !== 'none' && (
+                          <>
+                            <select
+                              value={newParamNumerator}
+                              onChange={(e) => setNewParamNumerator(e.target.value)}
+                              className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">{newParamCalculation === 'duration' ? '选择开始时间' : '选择分子字段'}</option>
+                              {templateForm.paramFields.map((field) => (
+                                <option key={field.key} value={field.key}>{field.label}</option>
+                              ))}
+                            </select>
+                            <select
+                              value={newParamDenominator}
+                              onChange={(e) => setNewParamDenominator(e.target.value)}
+                              className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">{newParamCalculation === 'duration' ? '选择结束时间' : '选择分母字段'}</option>
+                                {templateForm.paramFields.filter((f) => f.key !== newParamNumerator).map((field) => (
+                                  <option key={field.key} value={field.key}>{field.label}</option>
+                                ))}
+                            </select>
+                            <select
+                              value={newParamDecimalPlaces}
+                              onChange={(e) => setNewParamDecimalPlaces(Number(e.target.value))}
+                              className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="0">小数位数: 0位</option>
+                              <option value="1">小数位数: 1位</option>
+                              <option value="2">小数位数: 2位</option>
+                              <option value="3">小数位数: 3位</option>
+                            </select>
+                            {newParamCalculation === 'duration' && (
+                              <select
+                                value={newParamDurationUnit}
+                                onChange={(e) => setNewParamDurationUnit(e.target.value as DurationUnit)}
+                                className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="hours">单位: 小时</option>
+                                <option value="days">单位: 天</option>
+                              </select>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
