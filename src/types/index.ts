@@ -4,12 +4,27 @@ export interface CompletionParams {
   [key: string]: string | number;
 }
 
+export type ParamFieldType = 'text' | 'number' | 'percent';
+
+export type CalculationType = 
+  | 'none' 
+  | 'percentage' // 百分比型: 分子 / 分母 * 100
+  | 'duration'; // 时间型: 结束时间 - 开始时间
+
+export type DurationUnit = 'hours' | 'days';
+
 export interface ParamField {
   key: string;
   label: string;
   placeholder: string;
-  type: 'text' | 'number' | 'percent';
+  type: ParamFieldType;
   required: boolean;
+  calculationType?: CalculationType;
+  numeratorKey?: string;
+  denominatorKey?: string;
+  decimalPlaces?: number;
+  durationUnit?: DurationUnit;
+  defaultValue?: string | number;
 }
 
 export interface Task {

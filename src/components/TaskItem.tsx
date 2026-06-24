@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Check, X, ChevronDown, ChevronUp, Edit2, Save, Repeat, FileText, Pencil, PlusCircle } from 'lucide-react';
-import type { Task, TaskRecurrence, ParamField } from '../types';
+import type { Task, TaskRecurrence, ParamField, CalculationType, DurationUnit } from '../types';
 import { useTaskStore } from '../store/taskStore';
 
 interface TaskItemProps {
   task: Task;
   onDelete: (id: string) => void;
+  onEditTemplate?: (task: Task) => void;
 }
 
 const WEEK_DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
@@ -40,7 +41,7 @@ const getRecurrenceLabel = (task: Task): string => {
   }
 };
 
-export function TaskItem({ task, onDelete }: TaskItemProps) {
+export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editDetails, setEditDetails] = useState(task.details || '');
@@ -55,12 +56,39 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
   const [newParamLabel, setNewParamLabel] = useState('');
   const [newParamPlaceholder, setNewParamPlaceholder] = useState('');
   const [newParamType, setNewParamType] = useState<'text' | 'number' | 'percent'>('text');
+  const [newParamCalculation, setNewParamCalculation] = useState<CalculationType>('none');
+  const [newParamNumerator, setNewParamNumerator] = useState('');
+  const [newParamDenominator, setNewParamDenominator] = useState('');
+  const [newParamDecimalPlaces, setNewParamDecimalPlaces] = useState(2);
+  const [newParamDurationUnit, setNewParamDurationUnit] = useState<DurationUnit>('hours');
+  const [newParamDefaultValue, setNewParamDefaultValue] = useState('');
+  const [isEditingParamFields, setIsEditingParamFields] = useState(false);
+  const [editParamFieldsForEdit, setEditParamFieldsForEdit] = useState<ParamField[]>([]);
+  const [isEditingCompletionParams, setIsEditingCompletionParams] = useState(false);
+  const [editCompletionParams, setEditCompletionParams] = useState<Record<string, string | number>>({});
 
-  const { updateTaskDetails, completeTask, uncompleteTask, editTask } = useTaskStore();
+  const { updateTaskDetails, completeTask, uncompleteTask, editTask, updateTaskCompletionParams } = useTaskStore();
 
   const handleSaveDetails = () => {
     updateTaskDetails(task.id, editDetails.trim());
     setIsEditingDetails(false);
+  };
+
+  const handleEditCompletionParams = () => {
+    setEditCompletionParams({ ...task.completionParams });
+    setIsEditingCompletionParams(true);
+  };
+
+  const handleSaveCompletionParams = () => {
+    const calculatedParams = calculateDerivedFields(editCompletionParams);
+    updateTaskCompletionParams(task.id, calculatedParams);
+    setIsEditingCompletionParams(false);
+  };
+
+  const handleEditParamChange = (key: string, value: string | number) => {
+    const newParams = { ...editCompletionParams, [key]: value };
+    const calculatedParams = calculateDerivedFields(newParams);
+    setEditCompletionParams(calculatedParams);
   };
 
   const handleComplete = () => {
@@ -73,10 +101,18 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
 
   const handleConfirmComplete = () => {
     if (task.paramFields) {
+      const paramsWithDefaults: Record<string, string | number> = { ...completionParams };
+      
+      task.paramFields.forEach((field) => {
+        if (field.defaultValue !== undefined && paramsWithDefaults[field.key] === undefined) {
+          paramsWithDefaults[field.key] = field.defaultValue;
+        }
+      });
+      
       const missingFields = task.paramFields
-        .filter((field) => field.required)
+        .filter((field) => field.required && !field.calculationType)
         .filter((field) => {
-          const value = completionParams[field.key];
+          const value = paramsWithDefaults[field.key];
           return value === undefined || value === '' || value === 0;
         });
       if (missingFields.length > 0) {
@@ -84,14 +120,84 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
         alert(`请填写必填参数：${fieldNames}`);
         return;
       }
+      
+      const calculatedParams = calculateDerivedFields(paramsWithDefaults);
+      completeTask(task.id, Object.keys(calculatedParams).length > 0 ? calculatedParams : undefined);
+    } else {
+      completeTask(task.id, Object.keys(completionParams).length > 0 ? completionParams : undefined);
     }
-    completeTask(task.id, Object.keys(completionParams).length > 0 ? completionParams : undefined);
     setShowCompleteModal(false);
     setCompletionParams({});
   };
 
+  const calculateDerivedFields = (params: Record<string, string | number>): Record<string, string | number> => {
+    const result = { ...params };
+    if (!task.paramFields) return result;
+    
+    task.paramFields.forEach((field) => {
+      if (field.calculationType && field.calculationType !== 'none' && field.numeratorKey && field.denominatorKey) {
+        const decimals = field.decimalPlaces ?? 2;
+        let calculatedValue: number | string;
+        
+        if (field.calculationType === 'duration') {
+          const startTime = String(params[field.numeratorKey] || '');
+          const endTime = String(params[field.denominatorKey] || '');
+          
+          if (startTime && endTime) {
+            const normalizedStart = startTime.replace(/\//g, '-');
+            const normalizedEnd = endTime.replace(/\//g, '-');
+            
+            const start = new Date(normalizedStart);
+            const end = new Date(normalizedEnd);
+            
+            if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+              const diffMs = end.getTime() - start.getTime();
+              let diffHours = diffMs > 0 ? diffMs / (1000 * 60 * 60) : 0;
+              
+              if (field.durationUnit === 'days') {
+                diffHours = diffHours / 24;
+                if (diffHours >= 1) {
+                  const days = Math.floor(diffHours);
+                  const remainingHours = ((diffHours - days) * 24).toFixed(decimals);
+                  calculatedValue = `${days}天${parseFloat(remainingHours) > 0 ? parseFloat(remainingHours) + '小时' : ''}`;
+                } else {
+                  calculatedValue = diffHours.toFixed(decimals);
+                }
+              } else {
+                if (diffHours >= 24) {
+                  const days = Math.floor(diffHours / 24);
+                  const remainingHours = (diffHours % 24).toFixed(decimals);
+                  calculatedValue = `${days}天${parseFloat(remainingHours) > 0 ? parseFloat(remainingHours) + '小时' : ''}`;
+                } else {
+                  calculatedValue = diffHours.toFixed(decimals);
+                }
+              }
+            } else {
+              calculatedValue = '0';
+            }
+          } else {
+            calculatedValue = '0';
+          }
+        } else if (field.calculationType === 'percentage') {
+          const numerator = Number(params[field.numeratorKey]);
+          const denominator = Number(params[field.denominatorKey]);
+          const value = denominator && denominator !== 0 ? (numerator / denominator) * 100 : 0;
+          calculatedValue = value.toFixed(decimals);
+        } else {
+          calculatedValue = '0';
+        }
+        
+        result[field.key] = calculatedValue;
+      }
+    });
+    
+    return result;
+  };
+
   const handleParamChange = (key: string, value: string | number) => {
-    setCompletionParams((prev) => ({ ...prev, [key]: value }));
+    const newParams = { ...completionParams, [key]: value };
+    const calculatedParams = calculateDerivedFields(newParams);
+    setCompletionParams(calculatedParams);
   };
 
   const handleSaveTask = () => {
@@ -118,16 +224,34 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
 
   const addEditParamField = () => {
     if (!newParamLabel.trim()) return;
+    const defaultValue = newParamDefaultValue.trim() !== '' 
+      ? (newParamType === 'number' || newParamType === 'percent' 
+        ? parseFloat(newParamDefaultValue) 
+        : newParamDefaultValue) 
+      : undefined;
+    
     const newField: ParamField = {
       key: newParamLabel.trim().replace(/\s+/g, '-').toLowerCase(),
       label: newParamLabel.trim(),
       placeholder: newParamPlaceholder.trim() || `请输入${newParamLabel}`,
       type: newParamType,
       required: false,
+      calculationType: newParamCalculation !== 'none' ? newParamCalculation : undefined,
+      numeratorKey: newParamCalculation !== 'none' ? newParamNumerator : undefined,
+      denominatorKey: newParamCalculation !== 'none' ? newParamDenominator : undefined,
+      decimalPlaces: newParamCalculation !== 'none' ? newParamDecimalPlaces : undefined,
+      durationUnit: newParamCalculation === 'duration' ? newParamDurationUnit : undefined,
+      defaultValue,
     };
     setEditParamFields((prev) => [...prev, newField]);
     setNewParamLabel('');
     setNewParamPlaceholder('');
+    setNewParamCalculation('none');
+    setNewParamNumerator('');
+    setNewParamDenominator('');
+    setNewParamDecimalPlaces(2);
+    setNewParamDurationUnit('hours');
+    setNewParamDefaultValue('');
   };
 
   const removeEditParamField = (index: number) => {
@@ -181,8 +305,9 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">详情字段</label>
             <div className="flex gap-2 flex-wrap mb-2">
-              <input type="text" value={newParamLabel} onChange={(e) => setNewParamLabel(e.target.value)} placeholder="参数名称" className="flex-1 min-w-[120px] px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
-              <input type="text" value={newParamPlaceholder} onChange={(e) => setNewParamPlaceholder(e.target.value)} placeholder="提示文字" className="flex-1 min-w-[120px] px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+              <input type="text" value={newParamLabel} onChange={(e) => setNewParamLabel(e.target.value)} placeholder="参数名称" className="flex-1 min-w-[100px] px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+              <input type="text" value={newParamPlaceholder} onChange={(e) => setNewParamPlaceholder(e.target.value)} placeholder="提示文字" className="flex-1 min-w-[100px] px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+              <input type="text" value={newParamDefaultValue} onChange={(e) => setNewParamDefaultValue(e.target.value)} placeholder="默认值" className="flex-1 min-w-[80px] px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
               <select value={newParamType} onChange={(e) => setNewParamType(e.target.value as 'text' | 'number' | 'percent')} className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
                 <option value="text">文本</option>
                 <option value="number">数字</option>
@@ -194,6 +319,66 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
               </button>
             </div>
             {editParamFields.length > 0 && (
+              <div className="mb-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                <label className="block text-xs font-medium text-blue-700 mb-1">关联计算（可选）</label>
+                <div className="flex gap-2 flex-wrap">
+                  <select
+                    value={newParamCalculation}
+                    onChange={(e) => setNewParamCalculation(e.target.value as CalculationType)}
+                    className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                  >
+                    <option value="none">不计算</option>
+                    <option value="percentage">百分比型</option>
+                    <option value="duration">时间型</option>
+                  </select>
+                  {newParamCalculation !== 'none' && (
+                    <>
+                      <select
+                        value={newParamNumerator}
+                        onChange={(e) => setNewParamNumerator(e.target.value)}
+                        className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                      >
+                        <option value="">{newParamCalculation === 'duration' ? '选择开始时间' : '选择分子字段'}</option>
+                        {editParamFields.map((field) => (
+                          <option key={field.key} value={field.key}>{field.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={newParamDenominator}
+                        onChange={(e) => setNewParamDenominator(e.target.value)}
+                        className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                      >
+                        <option value="">{newParamCalculation === 'duration' ? '选择结束时间' : '选择分母字段'}</option>
+                        {editParamFields.filter((f) => f.key !== newParamNumerator).map((field) => (
+                          <option key={field.key} value={field.key}>{field.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={newParamDecimalPlaces}
+                        onChange={(e) => setNewParamDecimalPlaces(Number(e.target.value))}
+                        className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                      >
+                        <option value="0">0位小数</option>
+                        <option value="1">1位小数</option>
+                        <option value="2">2位小数</option>
+                        <option value="3">3位小数</option>
+                      </select>
+                      {newParamCalculation === 'duration' && (
+                        <select
+                          value={newParamDurationUnit}
+                          onChange={(e) => setNewParamDurationUnit(e.target.value as DurationUnit)}
+                          className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs"
+                        >
+                          <option value="hours">单位: 小时</option>
+                          <option value="days">单位: 天</option>
+                        </select>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+            {editParamFields.length > 0 && (
               <div className="space-y-1">
                 {editParamFields.map((field, index) => (
                   <div key={index} className="flex items-center gap-2 px-2 py-1 bg-gray-50 rounded-lg text-sm">
@@ -204,6 +389,26 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
                     {field.required && (
                       <span className="text-xs px-1.5 py-0.5 bg-red-100 text-red-600 rounded font-medium">
                         必填
+                      </span>
+                    )}
+                    {field.calculationType && (
+                      <>
+                        <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-600 rounded font-medium">
+                          {field.calculationType === 'percentage' ? '百分比' : '时间型'}
+                        </span>
+                        <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded font-medium">
+                          {field.decimalPlaces}位小数
+                        </span>
+                        {field.calculationType === 'duration' && (
+                          <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded font-medium">
+                            {field.durationUnit === 'hours' ? '小时' : '天'}
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {field.defaultValue !== undefined && (
+                      <span className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-600 rounded font-medium">
+                        默认: {field.defaultValue}
                       </span>
                     )}
                     <button type="button" onClick={() => removeEditParamField(index)} className="ml-auto p-1 text-gray-400 hover:text-red-500">
@@ -253,14 +458,14 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
             )}
           </div>
           {task.details && (
-            <button onClick={() => setShowDetails(!showDetails)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
+            <button onClick={() => setShowDetails(!showDetails)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors" title={showDetails ? '收起详情' : '展开详情'}>
               {showDetails ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
             </button>
           )}
-          <button onClick={() => setIsEditingTask(true)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors">
-            <Pencil className="w-5 h-5" />
+          <button onClick={() => setIsEditingTask(true)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors" title="编辑任务模板（名称、周期、参数定义）">
+            <Edit2 className="w-5 h-5" />
           </button>
-          <button onClick={() => onDelete(task.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+          <button onClick={() => onDelete(task.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors" title="删除任务">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -291,20 +496,116 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
           </div>
         )}
 
-        {task.completionParams && (
+        {(task.completionParams || task.paramFields) && (
           <div className="px-4 pb-4 ml-14">
             <div className="flex items-start gap-2">
               <FileText className="w-4 h-4 text-gray-400 mt-1" />
               <div className="flex-1">
-                <p className="text-xs text-gray-500 mb-1">详细信息</p>
-                {Object.entries(task.completionParams).map(([key, value]) => {
-                  const field = task.paramFields?.find((f) => f.key === key);
-                  return (
-                    <p key={key} className="text-sm text-gray-600">
-                      <span className="font-medium">{key}:</span> {value}{field?.type === 'percent' ? '%' : ''}
-                    </p>
-                  );
-                })}
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs text-gray-500">详细信息</p>
+                  {onEditTemplate ? (
+                    <button onClick={() => {
+                      setEditParamFieldsForEdit(task.paramFields || []);
+                      setIsEditingParamFields(true);
+                    }} className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1" title="修改参数字段定义">
+                      <Pencil className="w-3 h-3" />
+                      修改参数
+                    </button>
+                  ) : task.completed ? (
+                    <button onClick={handleEditCompletionParams} className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1" title="编辑已完成的参数值">
+                      <Pencil className="w-3 h-3" />
+                      修改值
+                    </button>
+                  ) : null}
+                </div>
+                {isEditingCompletionParams ? (
+                  <div className="space-y-3">
+                    {task.paramFields?.map((field) => {
+                      const isCalculated = !!field.calculationType;
+                      const fieldValue = editCompletionParams[field.key];
+                      let displayValue: string | number;
+                      
+                      if (typeof fieldValue === 'string') {
+                        displayValue = fieldValue;
+                      } else if (field.type === 'percent' && fieldValue !== undefined) {
+                        displayValue = `${Number(fieldValue).toFixed(field.decimalPlaces ?? 2)}%`;
+                      } else if (field.calculationType === 'duration' && typeof fieldValue === 'string') {
+                        displayValue = fieldValue;
+                      } else if (field.calculationType === 'duration' && typeof fieldValue === 'number') {
+                        displayValue = fieldValue.toFixed(field.decimalPlaces ?? 2);
+                      } else {
+                        displayValue = fieldValue;
+                      }
+                      
+                      return (
+                        <div key={field.key}>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            {field.label}
+                            {isCalculated && <span className="text-green-600 ml-1">(自动计算)</span>}
+                          </label>
+                          {isCalculated ? (
+                            <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-700 text-sm">
+                              {displayValue !== undefined ? displayValue : '--'}
+                            </div>
+                          ) : field.type === 'percent' ? (
+                            <input
+                              type="number"
+                              value={typeof fieldValue === 'number' ? fieldValue : ''}
+                              onChange={(e) => handleEditParamChange(field.key, parseFloat(e.target.value) || '')}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder={`请输入${field.label}`}
+                            />
+                          ) : field.type === 'number' ? (
+                            <input
+                              type="number"
+                              value={typeof fieldValue === 'number' ? fieldValue : ''}
+                              onChange={(e) => handleEditParamChange(field.key, parseFloat(e.target.value) || '')}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder={`请输入${field.label}`}
+                            />
+                          ) : (
+                            <input
+                              type="text"
+                              value={typeof fieldValue === 'string' ? fieldValue : ''}
+                              onChange={(e) => handleEditParamChange(field.key, e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder={`请输入${field.label}`}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={handleSaveCompletionParams} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                        保存修改
+                      </button>
+                      <button onClick={() => setIsEditingCompletionParams(false)} className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm">
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {Object.entries(task.completionParams).map(([key, value]) => {
+                      const field = task.paramFields?.find((f) => f.key === key);
+                      let displayValue: string | number;
+                      if (typeof value === 'string') {
+                        displayValue = value;
+                      } else if (field?.type === 'percent') {
+                        displayValue = `${Number(value).toFixed(field.decimalPlaces ?? 2)}%`;
+                      } else if (field?.calculationType === 'duration' && typeof value === 'number') {
+                        displayValue = value.toFixed(field.decimalPlaces ?? 2);
+                      } else {
+                        displayValue = value;
+                      }
+                      return (
+                        <p key={key} className="text-sm text-gray-600">
+                          <span className="font-medium">{field?.label || key}:</span> {displayValue}
+                        </p>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -319,26 +620,51 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
             
             <div className="space-y-3">
               {task.paramFields && task.paramFields.length > 0 ? (
-                task.paramFields.map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field.label}
-                      {field.required && <span className="text-red-500 ml-1">*</span>}
-                    </label>
-                    <div className={field.type === 'percent' ? 'flex items-center gap-1' : ''}>
-                      <input
-                        type={field.type === 'percent' ? 'number' : field.type}
-                        value={(completionParams[field.key] as string) || ''}
-                        onChange={(e) => handleParamChange(field.key, field.type === 'number' || field.type === 'percent' ? (parseInt(e.target.value) || 0) : e.target.value)}
-                        placeholder={field.placeholder}
-                        className={`${field.type === 'percent' ? 'flex-1' : 'w-full'} px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                        required={field.required}
-                        {...(field.type === 'percent' ? { min: 0, max: 100 } : {})}
-                      />
-                      {field.type === 'percent' && <span className="text-gray-500 text-sm">%</span>}
+                task.paramFields.map((field) => {
+                  const isCalculated = !!field.calculationType;
+                  const fieldValue = completionParams[field.key];
+                  let displayValue: string | number;
+                  
+                  if (typeof fieldValue === 'string') {
+                    displayValue = fieldValue;
+                  } else if (field.type === 'percent' && fieldValue !== undefined) {
+                    displayValue = `${Number(fieldValue).toFixed(2)}%`;
+                  } else if (field.calculationType === 'duration' && typeof fieldValue === 'number') {
+                    displayValue = fieldValue.toFixed(2);
+                  } else {
+                    displayValue = fieldValue;
+                  }
+                  
+                  return (
+                    <div key={field.key}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                        {isCalculated && <span className="text-green-600 ml-1 text-xs">(自动计算)</span>}
+                      </label>
+                      {isCalculated ? (
+                        <div className="flex items-center gap-1">
+                          <div className="flex-1 px-4 py-2 bg-gray-100 border border-gray-200 rounded-lg text-gray-700">
+                            {displayValue !== undefined ? displayValue : '--'}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={field.type === 'percent' ? 'flex items-center gap-1' : ''}>
+                          <input
+                            type={field.type === 'percent' ? 'number' : field.type}
+                            value={(completionParams[field.key] !== undefined ? completionParams[field.key] : field.defaultValue) || ''}
+                            onChange={(e) => handleParamChange(field.key, field.type === 'number' || field.type === 'percent' ? (parseFloat(e.target.value) || 0) : e.target.value)}
+                            placeholder={field.placeholder}
+                            className={`${field.type === 'percent' ? 'flex-1' : 'w-full'} px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                            required={field.required}
+                            {...(field.type === 'percent' ? { min: 0, max: 100 } : {})}
+                          />
+                          {field.type === 'percent' && <span className="text-gray-500 text-sm">%</span>}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-gray-500 text-center py-4">该任务没有设置完成参数</p>
               )}
@@ -351,6 +677,227 @@ export function TaskItem({ task, onDelete }: TaskItemProps) {
               <button onClick={handleConfirmComplete} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                 确认完成
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isEditingParamFields && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">修改参数字段</h3>
+              <button onClick={() => { setIsEditingParamFields(false); setEditParamFieldsForEdit([]); }} className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[70vh]">
+              <div className="space-y-3">
+                <div className="flex gap-2 flex-wrap">
+                  <input type="text" value={newParamLabel} onChange={(e) => setNewParamLabel(e.target.value)} placeholder="参数名称" className="flex-1 min-w-[100px] px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                  <input type="text" value={newParamPlaceholder} onChange={(e) => setNewParamPlaceholder(e.target.value)} placeholder="提示文字" className="flex-1 min-w-[100px] px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                  <input type="text" value={newParamDefaultValue} onChange={(e) => setNewParamDefaultValue(e.target.value)} placeholder="默认值" className="flex-1 min-w-[80px] px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                  <select value={newParamType} onChange={(e) => setNewParamType(e.target.value as 'text' | 'number' | 'percent')} className="px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                    <option value="text">文本</option>
+                    <option value="number">数字</option>
+                    <option value="percent">百分比</option>
+                  </select>
+                  <button type="button" onClick={() => {
+                    if (!newParamLabel.trim()) return;
+                    const defaultValue = newParamDefaultValue.trim() !== '' 
+                      ? (newParamType === 'number' || newParamType === 'percent' 
+                        ? parseFloat(newParamDefaultValue) 
+                        : newParamDefaultValue) 
+                      : undefined;
+                    const newField: ParamField = {
+                      key: newParamLabel.trim().replace(/\s+/g, '-').toLowerCase(),
+                      label: newParamLabel.trim(),
+                      placeholder: newParamPlaceholder.trim() || `请输入${newParamLabel}`,
+                      type: newParamType,
+                      required: false,
+                      defaultValue,
+                    };
+                    setEditParamFieldsForEdit((prev) => [...prev, newField]);
+                    setNewParamLabel('');
+                    setNewParamPlaceholder('');
+                    setNewParamDefaultValue('');
+                  }} className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1 text-sm">
+                    <PlusCircle className="w-3 h-3" />
+                    添加
+                  </button>
+                </div>
+
+                {editParamFieldsForEdit.length > 0 && (
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <label className="block text-sm font-medium text-blue-700 mb-2">关联计算（可选）</label>
+                    <div className="space-y-2">
+                      <select
+                        value={newParamCalculation}
+                        onChange={(e) => setNewParamCalculation(e.target.value as CalculationType)}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      >
+                        <option value="none">不计算</option>
+                        <option value="percentage">百分比型（分子/分母×100%）</option>
+                        <option value="duration">时间型（结束时间-开始时间）</option>
+                      </select>
+                      
+                      {newParamCalculation !== 'none' && (
+                        <div className="flex gap-2">
+                          <select
+                            value={newParamNumerator}
+                            onChange={(e) => setNewParamNumerator(e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          >
+                            <option value="">{newParamCalculation === 'duration' ? '选择开始时间' : '选择分子字段'}</option>
+                            {editParamFieldsForEdit.map((field) => (
+                              <option key={field.key} value={field.key}>{field.label}</option>
+                            ))}
+                          </select>
+                          <select
+                            value={newParamDenominator}
+                            onChange={(e) => setNewParamDenominator(e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          >
+                            <option value="">{newParamCalculation === 'duration' ? '选择结束时间' : '选择分母字段'}</option>
+                            {editParamFieldsForEdit.filter((f) => f.key !== newParamNumerator).map((field) => (
+                              <option key={field.key} value={field.key}>{field.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {newParamCalculation !== 'none' && (
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-xs text-gray-600 mb-1">小数位数</label>
+                            <select
+                              value={newParamDecimalPlaces}
+                              onChange={(e) => setNewParamDecimalPlaces(parseInt(e.target.value))}
+                              className="w-full px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                            >
+                              <option value="0">0位</option>
+                              <option value="1">1位</option>
+                              <option value="2">2位</option>
+                              <option value="3">3位</option>
+                            </select>
+                          </div>
+                          {newParamCalculation === 'duration' && (
+                            <div className="flex-1">
+                              <label className="block text-xs text-gray-600 mb-1">时间单位</label>
+                              <select
+                                value={newParamDurationUnit}
+                                onChange={(e) => setNewParamDurationUnit(e.target.value as DurationUnit)}
+                                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                              >
+                                <option value="hours">小时</option>
+                                <option value="days">天</option>
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {newParamCalculation !== 'none' && newParamNumerator && newParamDenominator && (
+                        <button
+                          onClick={() => {
+                            const calculationField: ParamField = {
+                              key: `calc-${Date.now()}`,
+                              label: newParamCalculation === 'percentage' ? '计算百分比' : '计算时长',
+                              placeholder: '',
+                              type: 'number',
+                              required: false,
+                              calculationType: newParamCalculation,
+                              numeratorKey: newParamNumerator,
+                              denominatorKey: newParamDenominator,
+                              decimalPlaces: newParamDecimalPlaces,
+                              durationUnit: newParamCalculation === 'duration' ? newParamDurationUnit : undefined,
+                            };
+                            setEditParamFieldsForEdit((prev) => [...prev, calculationField]);
+                            setNewParamCalculation('none');
+                            setNewParamNumerator('');
+                            setNewParamDenominator('');
+                          }}
+                          className="w-full px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                        >
+                          添加计算字段
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {editParamFieldsForEdit.length > 0 && (
+                  <div className="space-y-2">
+                    {editParamFieldsForEdit.map((field, index) => (
+                      <div key={index} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                        <input
+                          type="text"
+                          value={field.label}
+                          onChange={(e) => {
+                            const updatedFields = [...editParamFieldsForEdit];
+                            updatedFields[index] = { ...updatedFields[index], label: e.target.value, key: e.target.value.trim().replace(/\s+/g, '-').toLowerCase() };
+                            setEditParamFieldsForEdit(updatedFields);
+                          }}
+                          className="flex-1 px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="参数名称"
+                        />
+                        <select
+                          value={field.type}
+                          onChange={(e) => {
+                            const updatedFields = [...editParamFieldsForEdit];
+                            updatedFields[index] = { ...updatedFields[index], type: e.target.value as 'text' | 'number' | 'percent' };
+                            setEditParamFieldsForEdit(updatedFields);
+                          }}
+                          className="px-2 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="text">文本</option>
+                          <option value="number">数字</option>
+                          <option value="percent">百分比</option>
+                        </select>
+                        <input
+                          type="text"
+                          value={field.defaultValue !== undefined ? String(field.defaultValue) : ''}
+                          onChange={(e) => {
+                            const updatedFields = [...editParamFieldsForEdit];
+                            const val = e.target.value.trim();
+                            const defaultValue = val !== '' 
+                              ? (field.type === 'number' || field.type === 'percent' 
+                                ? parseFloat(val) 
+                                : val) 
+                              : undefined;
+                            updatedFields[index] = { ...updatedFields[index], defaultValue };
+                            setEditParamFieldsForEdit(updatedFields);
+                          }}
+                          className="w-20 px-2 py-1 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="默认值"
+                        />
+                        {field.calculationType && (
+                          <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-600 rounded">
+                            {field.calculationType === 'percentage' ? '百分比' : '时间型'}
+                          </span>
+                        )}
+                        <button onClick={() => setEditParamFieldsForEdit((prev) => prev.filter((_, i) => i !== index))} className="p-1 text-gray-400 hover:text-red-500 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t">
+              <div className="flex gap-3">
+                <button onClick={() => { setIsEditingParamFields(false); setEditParamFieldsForEdit([]); }} className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">
+                  取消
+                </button>
+                <button onClick={() => {
+                  editTask(task.id, task.name, task.details, editParamFieldsForEdit.length > 0 ? editParamFieldsForEdit : undefined, task.recurrence, task.weeklyDays, task.monthlyDay);
+                  setIsEditingParamFields(false);
+                  setEditParamFieldsForEdit([]);
+                }} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                  保存修改
+                </button>
+              </div>
             </div>
           </div>
         </div>

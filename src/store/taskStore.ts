@@ -12,6 +12,7 @@ interface TaskStore {
   uncompleteTask: (id: string) => void;
   deleteTask: (id: string) => void;
   updateTaskDetails: (id: string, details: string) => void;
+  updateTaskCompletionParams: (id: string, params: Record<string, string | number>) => void;
   getTodayTasks: () => Task[];
   getRecurringTasks: () => Task[];
   getTodayStats: () => { total: number; completed: number };
@@ -191,25 +192,47 @@ export const useTaskStore = create<TaskStore>()(
         }));
       },
 
+      updateTaskCompletionParams: (id, params) => {
+        set((state) => ({
+          tasks: state.tasks.map((task) => {
+            if (task.id === id) {
+              return {
+                ...task,
+                completionParams: params,
+              };
+            }
+            return task;
+          }),
+        }));
+      },
+
       getTodayTasks: () => {
         const today = new Date().toISOString().split('T')[0];
         const allTasks = get().tasks;
         
         const todayTasksMap = new Map<string, Task>();
+        const todayOnceTasks: Task[] = [];
         
         allTasks.forEach((task) => {
           if (isTodayTask(task, today)) {
-            const key = `${task.name}-${task.recurrence}`;
-            if (!todayTasksMap.has(key)) {
-              todayTasksMap.set(key, {
+            if (task.recurrence === 'once') {
+              todayOnceTasks.push({
                 ...task,
                 completed: task.completed && task.completedAt?.startsWith(today),
               });
+            } else {
+              const key = `${task.name}-${task.recurrence}`;
+              if (!todayTasksMap.has(key)) {
+                todayTasksMap.set(key, {
+                  ...task,
+                  completed: task.completed && task.completedAt?.startsWith(today),
+                });
+              }
             }
           }
         });
         
-        return Array.from(todayTasksMap.values());
+        return [...todayOnceTasks, ...Array.from(todayTasksMap.values())];
       },
 
       getTodayStats: () => {
@@ -259,100 +282,79 @@ export const useTaskStore = create<TaskStore>()(
         const todayTasks = get().getTodayTasks();
         
         const today = new Date(exportDate);
-        const formattedDate = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日（星期${['日', '一', '二', '三', '四', '五', '六'][today.getDay()]}）`;
-        const yearMonthDay = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        
-        const firstCompleted = completedTasks.length > 0 
-          ? new Date(Math.min(...completedTasks.map(t => new Date(t.completedAt!).getTime())))
-          : today;
-        const lastCompleted = completedTasks.length > 0 
-          ? new Date(Math.max(...completedTasks.map(t => new Date(t.completedAt!).getTime())))
-          : today;
-        
-        const startTime = firstCompleted.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-        const endTime = lastCompleted.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        const formattedDate = `${today.getMonth() + 1}月${today.getDate()}日`;
+        const weekDay = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][today.getDay()];
         
         const completedCount = completedTasks.length;
         const totalCount = todayTasks.length;
-        const completionStatus = completedCount === totalCount && totalCount > 0 ? '全部完成' : completedCount === 0 ? '未开始' : `${completedCount}/${totalCount} 完成`;
+        const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+        const incompleteCount = totalCount - completedCount;
         
-        let mdContent = `# 运维巡检日报\n\n`;
-        
-        mdContent += `## 基本信息\n\n`;
-        mdContent += `| 项目 | 内容 |\n`;
-        mdContent += `|------|------|\n`;
-        mdContent += `| 巡检日期 | ${formattedDate} |\n`;
-        mdContent += `| 巡检时段 | ${startTime} - ${endTime} |\n`;
-        mdContent += `| 巡检项总数 | ${totalCount} 项 |\n`;
-        mdContent += `| 完成状态 | ${completionStatus} |\n\n`;
-        
-        mdContent += `---\n\n`;
+        let content = `━━━━━━━━━━━━━━━━━━━━━━\n`;
+        content += `    📊 当日概览\n`;
+        content += `━━━━━━━━━━━━━━━━━━━━━━\n`;
+        content += `【${formattedDate} ${weekDay}】巡检完成情况\n\n`;
+        content += `📋 总任务: ${totalCount}项\n`;
+        content += `✅ 已完成: ${completedCount}项 (${completionRate}%)\n`;
+        content += `🔄 待完成: ${incompleteCount}项\n`;
+        content += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
         
         if (completedTasks.length === 0) {
-          mdContent += `暂无已完成任务\n`;
+          content += `暂无已完成任务\n`;
         } else {
+          content += `📝 详细记录\n`;
+          content += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+          
           completedTasks.forEach((task, index) => {
-            const sectionNum = index + 1;
-            mdContent += `## ${sectionNum}. ${task.name}\n\n`;
+            content += `${index + 1}. ${task.name}\n`;
             
-            const hasMetrics = task.paramFields?.some(f => f.type === 'number' || f.type === 'percent');
-            
-            if (task.details) {
-              mdContent += `### ${sectionNum}.1 检查详情\n\n`;
-              mdContent += `${task.details}\n\n`;
-            }
-            
-            if (hasMetrics && task.paramFields) {
-              mdContent += `### ${sectionNum}.2 检查指标\n\n`;
-              mdContent += `| 指标 | 数值 | 状态 |\n`;
-              mdContent += `|------|------|------|\n`;
-              
+            if (task.paramFields && task.paramFields.length > 0) {
               task.paramFields.forEach((field) => {
                 const value = task.completionParams?.[field.key];
+                const isCalculated = !!field.calculationType && field.calculationType !== 'none';
                 let displayValue: string | number;
-                if (value !== undefined && value !== '' && value !== 0) {
-                  displayValue = field.type === 'percent' ? `${value}%` : value;
-                } else if (!field.required && field.placeholder) {
-                  displayValue = field.type === 'percent' ? `${field.placeholder}%` : field.placeholder;
+                
+                const hasValue = value !== undefined && value !== '' && (isCalculated || value !== 0);
+                
+                if (hasValue) {
+                  if (typeof value === 'string') {
+                    displayValue = value;
+                  } else if (field.type === 'percent') {
+                    const decimals = field.decimalPlaces ?? 2;
+                    displayValue = `${Number(value).toFixed(decimals)}%`;
+                  } else if (isCalculated && field.type === 'number') {
+                    const decimals = field.decimalPlaces ?? 2;
+                    const unit = field.calculationType === 'duration' && field.durationUnit === 'days' ? '天' : '小时';
+                    displayValue = `${Number(value).toFixed(decimals)}${unit}`;
+                  } else {
+                    displayValue = value;
+                  }
+                } else if (!field.required && field.placeholder && !isCalculated) {
+                  displayValue = field.type === 'percent' ? `${Number(field.placeholder).toFixed(2)}%` : field.placeholder;
+                } else if (isCalculated) {
+                  const decimals = field.decimalPlaces ?? 2;
+                  const zeroFixed = (0).toFixed(decimals);
+                  const unit = field.calculationType === 'duration' && field.durationUnit === 'days' ? '天' : '小时';
+                  displayValue = field.type === 'percent' ? `${zeroFixed}%` : `${zeroFixed}${unit}`;
                 } else {
                   displayValue = '-';
                 }
                 
-                let status = '正常';
                 if (field.type === 'percent') {
                   const numValue = typeof value === 'number' ? value : parseFloat(String(value));
                   if (!isNaN(numValue) && numValue < 70) {
-                    status = '需关注';
+                    content += `   WARNING: ${field.label}: ${displayValue}\n`;
+                  } else {
+                    content += `   OK: ${field.label}: ${displayValue}\n`;
                   }
-                }
-                
-                mdContent += `| ${field.label} | ${displayValue} | ${status} |\n`;
-              });
-              
-              mdContent += `\n`;
-            }
-            
-            if (task.paramFields && task.paramFields.length > 0) {
-              mdContent += `### ${sectionNum}.${hasMetrics ? '3' : '2'} 详细信息\n\n`;
-              task.paramFields.forEach((field) => {
-                const value = task.completionParams?.[field.key];
-                let displayValue: string | number;
-                if (value !== undefined && value !== '' && value !== 0) {
-                  displayValue = field.type === 'percent' ? `${value}%` : value;
-                } else if (!field.required && field.placeholder) {
-                  displayValue = field.type === 'percent' ? `${field.placeholder}%` : field.placeholder;
                 } else {
-                  displayValue = '未填写';
+                  content += `   ${field.label}: ${displayValue}\n`;
                 }
-                mdContent += `- **${field.label}**: ${displayValue}\n`;
               });
-              mdContent += `\n`;
             } else if (task.completionParams) {
-              mdContent += `### ${sectionNum}.2 详细信息\n\n`;
               Object.entries(task.completionParams).forEach(([key, value]) => {
-                mdContent += `- **${key}**: ${value}\n`;
+                content += `   ${key}: ${value}\n`;
               });
-              mdContent += `\n`;
             }
             
             if (task.completedAt) {
@@ -360,27 +362,20 @@ export const useTaskStore = create<TaskStore>()(
                 hour: '2-digit',
                 minute: '2-digit',
               });
-              mdContent += `- **巡检时间**: ${completedTime}\n`;
+              content += `   完成时间: ${completedTime}\n`;
             }
             
-            mdContent += `\n---\n\n`;
+            content += `\n`;
           });
           
-          mdContent += `## 巡检总结\n\n`;
-          mdContent += `| 类别 | 统计 |\n`;
-          mdContent += `|------|------|\n`;
-          mdContent += `| 总巡检项 | ${totalCount} 项 |\n`;
-          mdContent += `| 已完成 | ${completedCount} 项 |\n`;
-          mdContent += `| 完成率 | ${totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0}% |\n\n`;
-          
-          const notes = completedTasks.flatMap(task => {
+          const issues = completedTasks.flatMap(task => {
             if (task.paramFields) {
               return task.paramFields
-                .filter(f => f.label.includes('备注') || f.label.includes('异常'))
+                .filter(f => f.label.includes('备注') || f.label.includes('异常') || f.label.includes('问题'))
                 .map(f => {
                   const value = task.completionParams?.[f.key];
                   if (value && value !== '' && String(value) !== '0') {
-                    return `- **${task.name}**: ${value}`;
+                    return `${task.name}: ${value}`;
                   }
                   return null;
                 })
@@ -389,20 +384,20 @@ export const useTaskStore = create<TaskStore>()(
             return [];
           });
           
-          if (notes.length > 0) {
-            mdContent += `### 待跟进事项\n\n`;
-            notes.forEach(note => {
-              mdContent += `${note}\n`;
+          if (issues.length > 0) {
+            content += `---\n\n`;
+            content += `待跟进事项:\n`;
+            issues.forEach(issue => {
+              content += `   - ${issue}\n`;
             });
-            mdContent += `\n`;
+            content += `\n`;
           }
-          
-          mdContent += `---\n\n`;
-          mdContent += `*报告生成时间: ${yearMonthDay}*\n`;
-          mdContent += `*巡检责任人: _________________*\n`;
         }
         
-        return mdContent;
+        content += `---\n`;
+        content += `报告生成时间: ${today.toLocaleString('zh-CN')}\n`;
+        
+        return content;
       },
 
       addTemplate: (template) => {
@@ -447,6 +442,44 @@ export const useTaskStore = create<TaskStore>()(
     }),
     {
       name: STORAGE_KEY,
+      version: 1,
+      migrate: (persistedState: unknown) => {
+        const state = persistedState as Record<string, unknown>;
+        
+        if (!state || typeof state !== 'object') {
+          return { tasks: [], history: [], templates: [] };
+        }
+        
+        const migratedTasks = ((state.tasks as any[]) || []).map((task: any) => ({
+          ...task,
+          completed: task.completed || false,
+          completedAt: task.completedAt,
+          completionParams: task.completionParams,
+          paramFields: ((task.paramFields || []) as any[]).map((field: any) => ({
+            ...field,
+            key: field.key || field.label?.replace(/\s+/g, '-').toLowerCase() || `field-${Date.now()}`,
+            label: field.label || '',
+            placeholder: field.placeholder || '',
+            type: field.type || 'text',
+            required: field.required || false,
+            calculationType: field.calculationType || undefined,
+            numeratorKey: field.numeratorKey || undefined,
+            denominatorKey: field.denominatorKey || undefined,
+            decimalPlaces: field.decimalPlaces !== undefined ? field.decimalPlaces : 2,
+            durationUnit: field.durationUnit || undefined,
+            defaultValue: field.defaultValue !== undefined ? field.defaultValue : undefined,
+          })),
+          recurrence: task.recurrence || 'once',
+          weeklyDays: task.weeklyDays,
+          monthlyDay: task.monthlyDay,
+        }));
+
+        return {
+          tasks: migratedTasks,
+          history: (state.history as any[]) || [],
+          templates: (state.templates as any[]) || [],
+        };
+      },
     }
   )
 );
