@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Calendar, TrendingUp, Repeat, Clock, FileText, Plus, Edit2, Trash2, X } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Calendar, TrendingUp, Repeat, Clock, FileText, Plus, Edit2, Trash2, X, Upload } from 'lucide-react';
 import { useTaskStore } from '../store/taskStore';
 import { TaskItem } from '../components/TaskItem';
 import { ParamFieldEditor } from '../components/ParamFieldEditor';
-import type { TaskRecurrence, ParamField, TaskTemplate } from '../types';
+import { importFromReport, parseImportPreview } from '../lib/importParser';
+import type { TaskRecurrence, ParamField, TaskTemplate, Task } from '../types';
 
 type TabType = 'history' | 'recurring' | 'templates';
 
@@ -19,7 +20,7 @@ const WEEK_DAYS = [
 
 export function History() {
   const [activeTab, setActiveTab] = useState<TabType>('history');
-  const { getHistoryStats, getRecurringTasks, addTask, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate } = useTaskStore();
+  const { getHistoryStats, getRecurringTasks, addTask, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate, importTasks } = useTaskStore();
   const history = getHistoryStats();
   const recurringTasks = getRecurringTasks();
   const templates = getTemplates();
@@ -45,6 +46,16 @@ export function History() {
     monthlyDay: 1,
     paramFields: [] as ParamField[],
   });
+
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importPreview, setImportPreview] = useState<{
+    date: string;
+    taskCount: number;
+    tasks: { name: string; paramCount: number }[];
+  } | null>(null);
+  const [importFileContent, setImportFileContent] = useState('');
+  const [importFileName, setImportFileName] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleOpenCreate = () => {
     setEditingTemplate(null);
@@ -112,6 +123,45 @@ export function History() {
         ? prev.weeklyDays.filter((d) => d !== day)
         : [...prev.weeklyDays, day],
     }));
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setImportFileContent(content);
+      try {
+        const preview = parseImportPreview(content);
+        setImportPreview(preview);
+      } catch {
+        setImportPreview(null);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmImport = () => {
+    if (!importFileContent) return;
+    try {
+      const tasks = importFromReport(importFileContent);
+      if (tasks.length === 0) {
+        alert('未能解析出有效任务数据');
+        return;
+      }
+      importTasks(tasks);
+      setShowImportModal(false);
+      setImportFileContent('');
+      setImportPreview(null);
+      setImportFileName('');
+      alert(`成功导入 ${tasks.length} 条历史记录`);
+    } catch {
+      alert('导入失败，请检查文件格式');
+    }
   };
 
   const handleSaveRecurringTask = () => {
@@ -201,9 +251,18 @@ export function History() {
       {activeTab === 'history' && (
         <>
           <div className="bg-white rounded-xl shadow-md p-6 mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <TrendingUp className="w-6 h-6 text-blue-600" />
-              <h2 className="text-lg font-semibold text-gray-800">本周统计</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <TrendingUp className="w-6 h-6 text-blue-600" />
+                <h2 className="text-lg font-semibold text-gray-800">本周统计</h2>
+              </div>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm"
+              >
+                <Upload className="w-4 h-4" />
+                导入历史数据
+              </button>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
@@ -636,6 +695,105 @@ export function History() {
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 创建任务
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold text-gray-800">导入历史数据</h3>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportFileContent('');
+                  setImportPreview(null);
+                  setImportFileName('');
+                }}
+                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[70vh]">
+              <div className="space-y-4">
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors">
+                  <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-600 mb-2">点击选择文件或拖拽到此处</p>
+                  <p className="text-xs text-gray-400 mb-4">支持 .txt / .md 格式的巡检报告</p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".txt,.md"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    选择文件
+                  </button>
+                </div>
+
+                {importFileName && (
+                  <div className="text-sm text-gray-500">
+                    已选择: <span className="font-medium text-gray-700">{importFileName}</span>
+                  </div>
+                )}
+
+                {importPreview && (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Calendar className="w-4 h-4 text-blue-600" />
+                      <span className="text-gray-600">日期:</span>
+                      <span className="font-medium text-gray-800">{importPreview.date}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <FileText className="w-4 h-4 text-blue-600" />
+                      <span className="text-gray-600">任务数:</span>
+                      <span className="font-medium text-gray-800">{importPreview.taskCount} 项</span>
+                    </div>
+                    <div className="border-t pt-3">
+                      <p className="text-xs text-gray-500 mb-2">任务列表:</p>
+                      <div className="space-y-1">
+                        {importPreview.tasks.map((t, i) => (
+                          <div key={i} className="flex items-center justify-between text-sm bg-white rounded px-3 py-1.5">
+                            <span className="text-gray-700">{t.name}</span>
+                            <span className="text-xs text-gray-400">{t.paramCount} 个参数</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportFileContent('');
+                  setImportPreview(null);
+                  setImportFileName('');
+                }}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                disabled={!importPreview}
+                className={`px-4 py-2 rounded-lg transition-colors ${
+                  importPreview
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                确认导入
               </button>
             </div>
           </div>

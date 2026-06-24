@@ -21,6 +21,7 @@ interface TaskStore {
   clearTodayCompleted: () => void;
   resetRecurringTaskStatus: () => void;
   exportCompletedTasks: (date?: string) => string;
+  importTasks: (tasks: Task[]) => void;
   addTemplate: (template: Omit<TaskTemplate, 'id'>) => void;
   editTemplate: (id: string, template: Omit<TaskTemplate, 'id'>) => void;
   deleteTemplate: (id: string) => void;
@@ -196,9 +197,13 @@ export const useTaskStore = create<TaskStore>()(
         set((state) => ({
           tasks: state.tasks.map((task) => {
             if (task.id === id) {
+              const history = task.completionParams && Object.keys(task.completionParams).length > 0
+                ? [...(task.completionParamsHistory || []), { timestamp: new Date().toISOString(), params: task.completionParams }]
+                : task.completionParamsHistory;
               return {
                 ...task,
                 completionParams: params,
+                completionParamsHistory: history && history.length > 0 ? history : undefined,
               };
             }
             return task;
@@ -407,6 +412,10 @@ export const useTaskStore = create<TaskStore>()(
         return content;
       },
 
+      importTasks: (newTasks) => {
+        set((state) => ({ tasks: [...state.tasks, ...newTasks] }));
+      },
+
       addTemplate: (template) => {
         const newTemplate: TaskTemplate = {
           ...template,
@@ -462,6 +471,7 @@ export const useTaskStore = create<TaskStore>()(
           completed: task.completed || false,
           completedAt: task.completedAt,
           completionParams: task.completionParams,
+          completionParamsHistory: task.completionParamsHistory || undefined,
           paramFields: ((task.paramFields || []) as any[]).map((field: any) => ({
             ...field,
             key: field.key || field.label?.replace(/\s+/g, '-').toLowerCase() || `field-${Date.now()}`,

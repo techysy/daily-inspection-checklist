@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, X, ChevronDown, ChevronUp, Edit2, Save, Repeat, FileText, Pencil } from 'lucide-react';
+import { Check, X, ChevronDown, ChevronUp, Edit2, Save, Repeat, FileText, RefreshCw, Settings } from 'lucide-react';
 import type { Task, TaskRecurrence, ParamField } from '../types';
 import { useTaskStore } from '../store/taskStore';
 import { ParamFieldEditor } from './ParamFieldEditor';
@@ -371,12 +371,12 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
                       setEditParamFieldsForEdit(task.paramFields || []);
                       setIsEditingParamFields(true);
                     }} className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1" title="修改参数字段定义">
-                      <Pencil className="w-3 h-3" />
+                      <Settings className="w-3 h-3" />
                       修改参数
                     </button>
                   ) : task.completed ? (
                     <button onClick={handleEditCompletionParams} className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1" title="编辑已完成的参数值">
-                      <Pencil className="w-3 h-3" />
+                      <RefreshCw className="w-3 h-3" />
                       更新
                     </button>
                   ) : null}

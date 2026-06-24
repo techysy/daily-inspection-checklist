@@ -6,6 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **参数变更历史记录**：更新已完成任务的参数时，自动保存上一次的参数值
+  - 新增 `completionParamsHistory` 字段，记录每次参数更新的时间戳和快照
+  - 导出报告仍显示最新状态，历史数据可用于追溯变更过程
+- **历史数据导入**：支持从导出的 TXT/MD 巡检报告导入历史数据
+  - 自动解析报告中的任务名称、参数键值对、完成时间
+  - 导入前预览解析结果（日期、任务数、参数列表）
+  - 支持批量导入，自动识别数值型参数
+- **数据可视化页面**：新增独立「数据分析」页面，基于 ECharts 实现参数值趋势折线图
+  - 自动提取已完成任务中的数值型参数（数字、百分比、计算字段）
+  - 按任务名称 + 参数名称分组展示趋势曲线
+  - 支持按任务筛选，平滑曲线 + 面积填充
+  - 鼠标悬停显示具体数值和单位
 - **关联计算功能**：支持参数之间的自动计算
   - 百分比型：根据两个数字字段自动计算百分比（如在线率 = 在线数 / 总数 × 100%）
   - 时间型：根据两个日期时间字段计算时长（支持完整日期时间格式，如 2026/06/24 07:11:40）
@@ -38,7 +50,10 @@ All notable changes to this project will be documented in this file.
 ### Updated
 
 - **组件架构**：新增 `Toast.tsx` 通知组件、`toastStore.ts` 状态管理
-- **类型定义**：扩展 `ParamField` 接口，添加 `defaultValue` 字段
+- **工具函数**：新增 `importParser.ts` 报告解析工具
+- **导航栏**：Header 新增「数据分析」入口
+- **依赖更新**：新增 `echarts` + `echarts-for-react` 图表库
+- **类型定义**：新增 `ParamsHistoryEntry` 接口，扩展 `Task` 接口添加 `completionParamsHistory` 字段
 - **README文档**：更新文档以反映新功能
 - **CHANGELOG文档**：添加详细的变更记录
 - **README文档**：添加历史记录页面创建周期任务功能说明

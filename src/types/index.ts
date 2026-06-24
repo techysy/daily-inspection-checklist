@@ -30,6 +30,11 @@ export interface ParamField {
   booleanFalseLabel?: string;
 }
 
+export interface ParamsHistoryEntry {
+  timestamp: string;
+  params: CompletionParams;
+}
+
 export interface Task {
   id: string;
   name: string;
@@ -39,6 +44,7 @@ export interface Task {
   details?: string;
   paramFields?: ParamField[];
   completionParams?: CompletionParams;
+  completionParamsHistory?: ParamsHistoryEntry[];
   recurrence: TaskRecurrence;
   weeklyDays?: number[];
   monthlyDay?: number;

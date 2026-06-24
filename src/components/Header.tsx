@@ -1,8 +1,8 @@
-import { ClipboardList, History } from 'lucide-react';
+import { ClipboardList, History, BarChart3 } from 'lucide-react';
 
 interface HeaderProps {
-  currentPage: 'home' | 'history';
-  onNavigate: (page: 'home' | 'history') => void;
+  currentPage: 'home' | 'history' | 'analysis';
+  onNavigate: (page: 'home' | 'history' | 'analysis') => void;
 }
 
 export function Header({ currentPage, onNavigate }: HeaderProps) {
@@ -46,6 +46,17 @@ export function Header({ currentPage, onNavigate }: HeaderProps) {
             >
               <History className="w-4 h-4" />
               历史记录
+            </button>
+            <button
+              onClick={() => onNavigate('analysis')}
+              className={`px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 ${
+                currentPage === 'analysis'
+                  ? 'bg-white text-blue-600 font-semibold'
+                  : 'text-white hover:bg-blue-500'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              数据分析
             </button>
           </nav>
         </div>

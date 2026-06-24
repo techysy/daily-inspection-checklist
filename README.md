@@ -18,7 +18,8 @@ src/
 │   └── Toast.tsx        # 居中Toast通知组件
 ├── pages/               # 页面层
 │   ├── Home.tsx         # 首页（今日任务）
-│   └── History.tsx      # 历史记录页面（统计图表、周期任务管理、模板管理）
+│   ├── DataAnalysis.tsx # 数据可视化页面（ECharts参数趋势折线图）
+│   └── History.tsx      # 历史记录页面（统计图表、周期任务管理、模板管理、数据导入）
 ├── store/               # 状态管理层
 │   ├── taskStore.ts     # Zustand状态管理（含LocalStorage持久化）
 │   └── toastStore.ts    # Toast通知状态管理
@@ -27,7 +28,8 @@ src/
 ├── hooks/               # 自定义Hooks
 │   └── useTheme.ts      # 主题切换Hook
 ├── lib/                 # 工具函数
-│   └── utils.ts         # 通用工具函数
+│   ├── utils.ts         # 通用工具函数
+│   └── importParser.ts  # TXT/MD报告解析工具
 ├── App.tsx              # 应用根组件
 ├── main.tsx             # 应用入口
 └── index.css            # 全局样式（Tailwind）
@@ -42,6 +44,8 @@ src/
 | 构建工具 | Vite | 6.5.0 |
 | 样式框架 | Tailwind CSS | 3.4.14 |
 | 状态管理 | Zustand | 4.5.5 |
+| 图表库 | ECharts | 5.6.0 |
+| 图表适配 | echarts-for-react | 3.0.2 |
 | 图标库 | Lucide React | 0.453.0 |
 
 ## 🏗️ 架构设计
@@ -75,7 +79,8 @@ interface Task {
   completedAt?: string; // 完成时间
   details?: string;     // 详细信息
   paramFields?: ParamField[]; // 自定义参数字段
-  completionParams?: Record<string, string | number>; // 完成参数值
+  completionParams?: Record<string, string | number>; // 完成参数值（最新）
+  completionParamsHistory?: { timestamp: string; params: Record<string, string | number> }[]; // 参数变更历史
   recurrence: 'once' | 'daily' | 'weekly' | 'monthly'; // 执行频率
   weeklyDays?: number[]; // 每周执行的日期
   monthlyDay?: number;   // 每月执行的日期
@@ -118,7 +123,9 @@ interface TaskTemplate {
 | **关联计算** | 参数自动计算 | 百分比型、时间型计算，支持小数位数和单位配置 |
 | **任务模板** | 从模板快速创建任务 | 可创建、编辑、删除模板，支持关联计算配置 |
 | **导出功能** | 导出为MD文档 | 当日概览格式，适合微信工作群分享 |
+| **历史数据导入** | 导入TXT/MD报告 | 自动解析任务和参数，支持批量导入 |
 | **历史记录** | 查看完成统计 | 柱状图展示最近7天数据，周期任务管理，支持直接创建周期任务 |
+| **数据可视化** | 参数趋势图表 | 基于ECharts的数值参数趋势折线图，支持按任务筛选 |
 
 ## 🚀 快速开始
 
@@ -240,6 +247,10 @@ npm run preview
    ├─ 查看每日完成柱状图
    ├─ 管理周期任务（支持直接创建周期任务）
    └─ 管理任务模板
+
+5. 数据分析 → 切换到"数据分析"
+   ├─ 查看所有数值参数趋势折线图
+   └─ 按任务名称筛选
 ```
 
 ## 🔧 配置说明
