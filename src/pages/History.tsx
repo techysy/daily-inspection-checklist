@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Calendar, TrendingUp, Repeat, Clock, FileText, Plus, Edit2, Trash2, X, Upload } from 'lucide-react';
+import { Calendar, TrendingUp, Repeat, Clock, FileText, Plus, Edit2, Trash2, X, Upload, Download } from 'lucide-react';
 import { useTaskStore } from '../store/taskStore';
 import { TaskItem } from '../components/TaskItem';
 import { ParamFieldEditor } from '../components/ParamFieldEditor';
@@ -20,7 +20,7 @@ const WEEK_DAYS = [
 
 export function History() {
   const [activeTab, setActiveTab] = useState<TabType>('history');
-  const { getHistoryStats, getRecurringTasks, addTask, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate, importTasks } = useTaskStore();
+  const { getHistoryStats, getRecurringTasks, addTask, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate, importTasks, exportTemplates } = useTaskStore();
   const history = getHistoryStats();
   const recurringTasks = getRecurringTasks();
   const templates = getTemplates();
@@ -379,13 +379,36 @@ export function History() {
               <FileText className="w-6 h-6 text-blue-600" />
               <h2 className="text-lg font-semibold text-gray-800">任务模板</h2>
             </div>
-            <button
-              onClick={handleOpenCreate}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              创建模板
-            </button>
+            <div className="flex items-center gap-2">
+              {templates.length > 0 && (
+                <button
+                  onClick={() => {
+                    const content = exportTemplates();
+                    if (!content) return;
+                    const blob = new Blob([content], { type: 'application/json;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `任务模板_${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  导出模板
+                </button>
+              )}
+              <button
+                onClick={handleOpenCreate}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                创建模板
+              </button>
+            </div>
           </div>
 
           {templates.length === 0 ? (

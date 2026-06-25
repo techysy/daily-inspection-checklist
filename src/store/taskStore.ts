@@ -26,6 +26,7 @@ interface TaskStore {
   editTemplate: (id: string, template: Omit<TaskTemplate, 'id'>) => void;
   deleteTemplate: (id: string) => void;
   getTemplates: () => TaskTemplate[];
+  exportTemplates: () => string;
   createTaskFromTemplate: (templateId: string) => void;
 }
 
@@ -438,9 +439,15 @@ export const useTaskStore = create<TaskStore>()(
         }));
       },
 
-      getTemplates: () => {
-        return get().templates;
-      },
+  getTemplates: () => {
+    return get().templates;
+  },
+
+  exportTemplates: () => {
+    const templates = get().templates;
+    if (templates.length === 0) return '';
+    return JSON.stringify(templates.map(({ id, ...rest }) => rest), null, 2);
+  },
 
       createTaskFromTemplate: (templateId) => {
         const template = get().templates.find((t) => t.id === templateId);
