@@ -4,7 +4,7 @@ export interface CompletionParams {
   [key: string]: string | number | boolean;
 }
 
-export type ParamFieldType = 'text' | 'number' | 'percent' | 'boolean' | 'calc-percentage' | 'calc-duration';
+export type ParamFieldType = 'text' | 'number' | 'percent' | 'boolean' | 'datetime' | 'calc-percentage' | 'calc-duration';
 
 export type CalculationType = 
   | 'none' 
@@ -26,6 +26,7 @@ export interface ParamField {
   decimalPlaces?: number;
   durationUnit?: DurationUnit;
   defaultValue?: string | number | boolean;
+  useCurrentTime?: boolean;
   booleanTrueLabel?: string;
   booleanFalseLabel?: string;
 }

@@ -574,6 +574,15 @@ export function History() {
                     fields={templateForm.paramFields}
                     onAdd={(field) => setTemplateForm((prev) => ({ ...prev, paramFields: [...prev.paramFields, field] }))}
                     onRemove={(index) => setTemplateForm((prev) => ({ ...prev, paramFields: prev.paramFields.filter((_, i) => i !== index) }))}
+                    onMove={(from, to) => {
+                      if (to < 0 || to >= templateForm.paramFields.length) return;
+                      setTemplateForm((prev) => {
+                        const arr = [...prev.paramFields];
+                        const [item] = arr.splice(from, 1);
+                        arr.splice(to, 0, item);
+                        return { ...prev, paramFields: arr };
+                      });
+                    }}
                   />
                 </div>
               </div>
@@ -701,6 +710,15 @@ export function History() {
                     fields={recurringForm.paramFields}
                     onAdd={(field) => setRecurringForm((prev) => ({ ...prev, paramFields: [...prev.paramFields, field] }))}
                     onRemove={(index) => setRecurringForm((prev) => ({ ...prev, paramFields: prev.paramFields.filter((_, i) => i !== index) }))}
+                    onMove={(from, to) => {
+                      if (to < 0 || to >= recurringForm.paramFields.length) return;
+                      setRecurringForm((prev) => {
+                        const arr = [...prev.paramFields];
+                        const [item] = arr.splice(from, 1);
+                        arr.splice(to, 0, item);
+                        return { ...prev, paramFields: arr };
+                      });
+                    }}
                     showRequired={false}
                   />
                 </div>

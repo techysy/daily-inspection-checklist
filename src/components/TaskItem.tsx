@@ -96,7 +96,10 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
       const paramsWithDefaults: Record<string, string | number | boolean> = { ...completionParams };
       
       task.paramFields.forEach((field) => {
-        if (field.defaultValue !== undefined && paramsWithDefaults[field.key] === undefined) {
+        if (field.useCurrentTime && paramsWithDefaults[field.key] === undefined) {
+          const now = new Date();
+          paramsWithDefaults[field.key] = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+        } else if (field.defaultValue !== undefined && paramsWithDefaults[field.key] === undefined) {
           paramsWithDefaults[field.key] = field.defaultValue;
         }
       });
@@ -280,6 +283,15 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
               fields={editParamFields}
               onAdd={(field) => setEditParamFields((prev) => [...prev, field])}
               onRemove={(index) => setEditParamFields((prev) => prev.filter((_, i) => i !== index))}
+              onMove={(from, to) => {
+                if (to < 0 || to >= editParamFields.length) return;
+                setEditParamFields((prev) => {
+                  const arr = [...prev];
+                  const [item] = arr.splice(from, 1);
+                  arr.splice(to, 0, item);
+                  return arr;
+                });
+              }}
             />
           </div>
           <div className="flex gap-2 pt-2">
@@ -621,6 +633,15 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
                 fields={editParamFieldsForEdit}
                 onAdd={(field) => setEditParamFieldsForEdit((prev) => [...prev, field])}
                 onRemove={(index) => setEditParamFieldsForEdit((prev) => prev.filter((_, i) => i !== index))}
+                onMove={(from, to) => {
+                  if (to < 0 || to >= editParamFieldsForEdit.length) return;
+                  setEditParamFieldsForEdit((prev) => {
+                    const arr = [...prev];
+                    const [item] = arr.splice(from, 1);
+                    arr.splice(to, 0, item);
+                    return arr;
+                  });
+                }}
               />
             </div>
             <div className="p-4 border-t">

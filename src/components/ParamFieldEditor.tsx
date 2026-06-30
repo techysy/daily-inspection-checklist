@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PlusCircle, X } from 'lucide-react';
+import { PlusCircle, X, ChevronUp, ChevronDown } from 'lucide-react';
 import type { ParamField, DurationUnit } from '../types';
 import { useToastStore } from '../store/toastStore';
 
@@ -7,16 +7,18 @@ interface ParamFieldEditorProps {
   fields: ParamField[];
   onAdd: (field: ParamField) => void;
   onRemove: (index: number) => void;
+  onMove?: (fromIndex: number, toIndex: number) => void;
   showRequired?: boolean;
 }
 
-export function ParamFieldEditor({ fields, onAdd, onRemove, showRequired = true }: ParamFieldEditorProps) {
+export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired = true }: ParamFieldEditorProps) {
   const showToast = useToastStore((s) => s.showToast);
   const [label, setLabel] = useState('');
   const [placeholder, setPlaceholder] = useState('');
   const [defaultValue, setDefaultValue] = useState('');
-  const [type, setType] = useState<'text' | 'number' | 'percent' | 'boolean' | 'calc-percentage' | 'calc-duration'>('text');
+  const [type, setType] = useState<'text' | 'number' | 'percent' | 'boolean' | 'datetime' | 'calc-percentage' | 'calc-duration'>('text');
   const [required, setRequired] = useState(false);
+  const [useCurrentTime, setUseCurrentTime] = useState(false);
   const [numeratorKey, setNumeratorKey] = useState('');
   const [denominatorKey, setDenominatorKey] = useState('');
   const [fixedDenominatorValue, setFixedDenominatorValue] = useState('');
@@ -25,6 +27,7 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, showRequired = true 
   const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
 
   const isCalc = type === 'calc-percentage' || type === 'calc-duration';
+  const isDatetime = type === 'datetime';
 
   const handleAdd = () => {
     if (!label.trim()) return;
@@ -53,6 +56,7 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, showRequired = true 
       type: isCalc ? 'number' : type,
       required,
       defaultValue: parsedDefault,
+      useCurrentTime: isDatetime ? useCurrentTime : undefined,
       calculationType: type === 'calc-percentage' ? 'percentage' : type === 'calc-duration' ? 'duration' : undefined,
       numeratorKey: isCalc ? numeratorKey : undefined,
       denominatorKey: isCalc && !useFixedDenominator ? denominatorKey : undefined,
@@ -67,6 +71,7 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, showRequired = true 
     setDefaultValue('');
     setType('text');
     setRequired(false);
+    setUseCurrentTime(false);
     setNumeratorKey('');
     setDenominatorKey('');
     setFixedDenominatorValue('');
@@ -130,6 +135,7 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, showRequired = true 
           <option value="number">数字</option>
           <option value="percent">百分比</option>
           <option value="boolean">是否</option>
+          <option value="datetime">日期时间</option>
           <option disabled className="text-gray-400">──────────</option>
           <option value="calc-percentage">计算百分比</option>
           <option value="calc-duration">计算时长</option>
@@ -143,6 +149,17 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, showRequired = true 
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm text-gray-700">必填</span>
+          </label>
+        )}
+        {isDatetime && (
+          <label className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg bg-white cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useCurrentTime}
+              onChange={(e) => setUseCurrentTime(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">当前时间</span>
           </label>
         )}
         <button
@@ -280,12 +297,37 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, showRequired = true 
         <div className="mt-3 space-y-2">
           {fields.map((field, index) => (
             <div key={index} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+              {onMove && fields.length > 1 && (
+                <div className="flex flex-col -space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => onMove(index, index - 1)}
+                    disabled={index === 0}
+                    className="p-0.5 text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="上移"
+                  >
+                    <ChevronUp className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMove(index, index + 1)}
+                    disabled={index === fields.length - 1}
+                    className="p-0.5 text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="下移"
+                  >
+                    <ChevronDown className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
               <span className="text-sm text-gray-700">{field.label}</span>
               <span className="text-xs px-2 py-0.5 bg-gray-200 text-gray-600 rounded">
-                {field.calculationType === 'percentage' ? '计算百分比' : field.calculationType === 'duration' ? '计算时长' : field.type === 'text' ? '文本' : field.type === 'number' ? '数字' : field.type === 'percent' ? '百分比' : '是否'}
+                {field.calculationType === 'percentage' ? '计算百分比' : field.calculationType === 'duration' ? '计算时长' : field.type === 'text' ? '文本' : field.type === 'number' ? '数字' : field.type === 'percent' ? '百分比' : field.type === 'datetime' ? '日期时间' : '是否'}
               </span>
               {field.required && (
                 <span className="text-xs px-2 py-0.5 bg-red-100 text-red-600 rounded font-medium">必填</span>
+              )}
+              {field.useCurrentTime && (
+                <span className="text-xs px-2 py-0.5 bg-cyan-100 text-cyan-600 rounded font-medium">当前时间</span>
               )}
               {field.calculationType && field.calculationType !== 'none' && (
                 <>

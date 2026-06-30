@@ -241,6 +241,15 @@ export function AddTask() {
               fields={paramFields}
               onAdd={(field) => setParamFields((prev) => [...prev, field])}
               onRemove={(index) => setParamFields((prev) => prev.filter((_, i) => i !== index))}
+              onMove={(from, to) => {
+                if (to < 0 || to >= paramFields.length) return;
+                setParamFields((prev) => {
+                  const arr = [...prev];
+                  const [item] = arr.splice(from, 1);
+                  arr.splice(to, 0, item);
+                  return arr;
+                });
+              }}
             />
           </div>
         )}
