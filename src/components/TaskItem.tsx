@@ -87,6 +87,22 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
     if (task.completed) {
       uncompleteTask(task.id);
     } else {
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const currentTime = `${y}/${m}/${d} ${hh}:${mm}:${ss}`;
+
+      const initial: Record<string, string | number | boolean> = {};
+      task.paramFields?.forEach((field) => {
+        if (field.useCurrentTime) {
+          initial[field.key] = currentTime;
+        }
+      });
+      setCompletionParams(initial);
       setShowCompleteModal(true);
     }
   };
@@ -98,7 +114,13 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
       task.paramFields.forEach((field) => {
         if (field.useCurrentTime && paramsWithDefaults[field.key] === undefined) {
           const now = new Date();
-          paramsWithDefaults[field.key] = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+          const y = now.getFullYear();
+          const m = String(now.getMonth() + 1).padStart(2, '0');
+          const d = String(now.getDate()).padStart(2, '0');
+          const hh = String(now.getHours()).padStart(2, '0');
+          const mm = String(now.getMinutes()).padStart(2, '0');
+          const ss = String(now.getSeconds()).padStart(2, '0');
+          paramsWithDefaults[field.key] = `${y}/${m}/${d} ${hh}:${mm}:${ss}`;
         } else if (field.defaultValue !== undefined && paramsWithDefaults[field.key] === undefined) {
           paramsWithDefaults[field.key] = field.defaultValue;
         }
