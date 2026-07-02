@@ -20,7 +20,7 @@ const WEEK_DAYS = [
 
 export function History() {
   const [activeTab, setActiveTab] = useState<TabType>('history');
-  const { getHistoryStats, getRecurringTasks, addTask, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate, importTasks, exportTemplates } = useTaskStore();
+  const { getHistoryStats, getRecurringTasks, addTask, deleteTask, resetRecurringTaskStatus, getTemplates, addTemplate, editTemplate, deleteTemplate, importTasks, exportTemplates, exportHistory } = useTaskStore();
   const history = getHistoryStats();
   const recurringTasks = getRecurringTasks();
   const templates = getTemplates();
@@ -256,13 +256,36 @@ export function History() {
                 <TrendingUp className="w-6 h-6 text-blue-600" />
                 <h2 className="text-lg font-semibold text-gray-800">本周统计</h2>
               </div>
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm"
-              >
-                <Upload className="w-4 h-4" />
-                导入历史数据
-              </button>
+              <div className="flex items-center gap-2">
+                {history.length > 0 && (
+                  <button
+                    onClick={() => {
+                      const content = exportHistory();
+                      if (!content) return;
+                      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `巡检历史记录_${new Date().toISOString().split('T')[0]}.txt`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    导出历史
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 text-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  导入历史数据
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
@@ -574,6 +597,7 @@ export function History() {
                     fields={templateForm.paramFields}
                     onAdd={(field) => setTemplateForm((prev) => ({ ...prev, paramFields: [...prev.paramFields, field] }))}
                     onRemove={(index) => setTemplateForm((prev) => ({ ...prev, paramFields: prev.paramFields.filter((_, i) => i !== index) }))}
+                    onUpdate={(index, field) => setTemplateForm((prev) => ({ ...prev, paramFields: prev.paramFields.map((f, i) => i === index ? field : f) }))}
                     onMove={(from, to) => {
                       if (to < 0 || to >= templateForm.paramFields.length) return;
                       setTemplateForm((prev) => {
@@ -710,6 +734,7 @@ export function History() {
                     fields={recurringForm.paramFields}
                     onAdd={(field) => setRecurringForm((prev) => ({ ...prev, paramFields: [...prev.paramFields, field] }))}
                     onRemove={(index) => setRecurringForm((prev) => ({ ...prev, paramFields: prev.paramFields.filter((_, i) => i !== index) }))}
+                    onUpdate={(index, field) => setRecurringForm((prev) => ({ ...prev, paramFields: prev.paramFields.map((f, i) => i === index ? field : f) }))}
                     onMove={(from, to) => {
                       if (to < 0 || to >= recurringForm.paramFields.length) return;
                       setRecurringForm((prev) => {

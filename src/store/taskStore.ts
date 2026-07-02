@@ -27,6 +27,7 @@ interface TaskStore {
   deleteTemplate: (id: string) => void;
   getTemplates: () => TaskTemplate[];
   exportTemplates: () => string;
+  exportHistory: () => string;
   createTaskFromTemplate: (templateId: string) => void;
 }
 
@@ -461,6 +462,60 @@ export const useTaskStore = create<TaskStore>()(
             template.monthlyDay
           );
         }
+      },
+
+      exportHistory: () => {
+        const history = get().history;
+        const tasks = get().tasks;
+        
+        if (history.length === 0) return '';
+        
+        let content = `# 巡检历史记录\n\n`;
+        content += `| 日期 | 总任务 | 已完成 | 完成率 |\n`;
+        content += `|------|--------|--------|--------|\n`;
+        
+        const sortedHistory = [...history].sort((a, b) => 
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+        
+        sortedHistory.forEach((day) => {
+          const rate = day.total > 0 ? Math.round((day.completed / day.total) * 100) : 0;
+          const d = new Date(day.date);
+          const formatted = `${d.getMonth() + 1}/${d.getDate()}`;
+          content += `| ${formatted} | ${day.total} | ${day.completed} | ${rate}% |\n`;
+        });
+        
+        content += `\n---\n\n`;
+        content += `# 已完成任务详情\n\n`;
+        
+        sortedHistory.forEach((day) => {
+          const completedTasks = tasks.filter((t) => 
+            t.completed && t.completedAt?.startsWith(day.date)
+          );
+          
+          if (completedTasks.length > 0) {
+            const d = new Date(day.date);
+            content += `## ${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}\n\n`;
+            
+            completedTasks.forEach((task, index) => {
+              content += `${index + 1}. **${task.name}**\n`;
+              if (task.completionParams && Object.keys(task.completionParams).length > 0) {
+                Object.entries(task.completionParams).forEach(([key, value]) => {
+                  const field = task.paramFields?.find((f) => f.key === key);
+                  const label = field?.label || key;
+                  content += `   - ${label}: ${value}\n`;
+                });
+              }
+              if (task.completedAt) {
+                const time = new Date(task.completedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+                content += `   - 完成时间: ${time}\n`;
+              }
+            });
+            content += `\n`;
+          }
+        });
+        
+        return content;
       },
     }),
     {

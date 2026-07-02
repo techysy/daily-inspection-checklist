@@ -241,6 +241,7 @@ export function AddTask() {
               fields={paramFields}
               onAdd={(field) => setParamFields((prev) => [...prev, field])}
               onRemove={(index) => setParamFields((prev) => prev.filter((_, i) => i !== index))}
+              onUpdate={(index, field) => setParamFields((prev) => prev.map((f, i) => i === index ? field : f))}
               onMove={(from, to) => {
                 if (to < 0 || to >= paramFields.length) return;
                 setParamFields((prev) => {

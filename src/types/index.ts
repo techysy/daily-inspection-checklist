@@ -22,6 +22,7 @@ export interface ParamField {
   calculationType?: CalculationType;
   numeratorKey?: string;
   denominatorKey?: string;
+  fallbackDenominatorKey?: string;
   fixedDenominatorValue?: number;
   decimalPlaces?: number;
   durationUnit?: DurationUnit;

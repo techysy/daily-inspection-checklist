@@ -152,14 +152,17 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
     if (!task.paramFields) return result;
     
     task.paramFields.forEach((field) => {
-      const hasDenominator = field.denominatorKey || field.fixedDenominatorValue !== undefined;
+      const hasDenominator = field.denominatorKey || field.fallbackDenominatorKey || field.fixedDenominatorValue !== undefined;
       if (field.calculationType && field.calculationType !== 'none' && field.numeratorKey && hasDenominator) {
         const decimals = field.decimalPlaces ?? 2;
         let calculatedValue: number | string;
         
         if (field.calculationType === 'duration') {
           const startTime = String(params[field.numeratorKey] || '');
-          const endTime = String(params[field.denominatorKey!] || '');
+          let endTime = String(params[field.denominatorKey!] || '');
+          if (!endTime && field.fallbackDenominatorKey) {
+            endTime = String(params[field.fallbackDenominatorKey] || '');
+          }
           
           if (startTime && endTime) {
             const normalizedStart = startTime.replace(/\//g, '-');
@@ -305,6 +308,7 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
               fields={editParamFields}
               onAdd={(field) => setEditParamFields((prev) => [...prev, field])}
               onRemove={(index) => setEditParamFields((prev) => prev.filter((_, i) => i !== index))}
+              onUpdate={(index, field) => setEditParamFields((prev) => prev.map((f, i) => i === index ? field : f))}
               onMove={(from, to) => {
                 if (to < 0 || to >= editParamFields.length) return;
                 setEditParamFields((prev) => {
@@ -655,6 +659,7 @@ export function TaskItem({ task, onDelete, onEditTemplate }: TaskItemProps) {
                 fields={editParamFieldsForEdit}
                 onAdd={(field) => setEditParamFieldsForEdit((prev) => [...prev, field])}
                 onRemove={(index) => setEditParamFieldsForEdit((prev) => prev.filter((_, i) => i !== index))}
+                onUpdate={(index, field) => setEditParamFieldsForEdit((prev) => prev.map((f, i) => i === index ? field : f))}
                 onMove={(from, to) => {
                   if (to < 0 || to >= editParamFieldsForEdit.length) return;
                   setEditParamFieldsForEdit((prev) => {

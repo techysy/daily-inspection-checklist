@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PlusCircle, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { PlusCircle, X, ChevronUp, ChevronDown, Edit2, Save } from 'lucide-react';
 import type { ParamField, DurationUnit } from '../types';
 import { useToastStore } from '../store/toastStore';
 
@@ -7,11 +7,12 @@ interface ParamFieldEditorProps {
   fields: ParamField[];
   onAdd: (field: ParamField) => void;
   onRemove: (index: number) => void;
+  onUpdate?: (index: number, field: ParamField) => void;
   onMove?: (fromIndex: number, toIndex: number) => void;
   showRequired?: boolean;
 }
 
-export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired = true }: ParamFieldEditorProps) {
+export function ParamFieldEditor({ fields, onAdd, onRemove, onUpdate, onMove, showRequired = true }: ParamFieldEditorProps) {
   const showToast = useToastStore((s) => s.showToast);
   const [label, setLabel] = useState('');
   const [placeholder, setPlaceholder] = useState('');
@@ -25,6 +26,8 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
   const [useFixedDenominator, setUseFixedDenominator] = useState(false);
   const [decimalPlaces, setDecimalPlaces] = useState(2);
   const [durationUnit, setDurationUnit] = useState<DurationUnit>('hours');
+  const [fallbackDenominatorKey, setFallbackDenominatorKey] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const isCalc = type === 'calc-percentage' || type === 'calc-duration';
   const isDatetime = type === 'datetime';
@@ -60,6 +63,7 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
       calculationType: type === 'calc-percentage' ? 'percentage' : type === 'calc-duration' ? 'duration' : undefined,
       numeratorKey: isCalc ? numeratorKey : undefined,
       denominatorKey: isCalc && !useFixedDenominator ? denominatorKey : undefined,
+      fallbackDenominatorKey: type === 'calc-duration' && !useFixedDenominator ? fallbackDenominatorKey : undefined,
       fixedDenominatorValue: isCalc && useFixedDenominator ? parseFloat(fixedDenominatorValue) : undefined,
       decimalPlaces: isCalc ? decimalPlaces : undefined,
       durationUnit: type === 'calc-duration' ? durationUnit : undefined,
@@ -74,6 +78,7 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
     setUseCurrentTime(false);
     setNumeratorKey('');
     setDenominatorKey('');
+    setFallbackDenominatorKey('');
     setFixedDenominatorValue('');
     setUseFixedDenominator(false);
     setDecimalPlaces(2);
@@ -88,8 +93,100 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
   };
 
   const canAddCalc = isCalc && numeratorKey && (
-    useFixedDenominator ? fixedDenominatorValue !== '' : denominatorKey
+    useFixedDenominator ? fixedDenominatorValue !== '' : (denominatorKey || (type === 'calc-duration' && fallbackDenominatorKey))
   );
+
+  const handleEdit = (index: number) => {
+    const field = fields[index];
+    setEditingIndex(index);
+    setLabel(field.label);
+    setPlaceholder(field.placeholder);
+    setDefaultValue(field.defaultValue !== undefined ? String(field.defaultValue) : '');
+    
+    if (field.calculationType === 'percentage') {
+      setType('calc-percentage');
+    } else if (field.calculationType === 'duration') {
+      setType('calc-duration');
+    } else {
+      setType(field.type as typeof type);
+    }
+    
+    setRequired(field.required);
+    setUseCurrentTime(field.useCurrentTime || false);
+    setNumeratorKey(field.numeratorKey || '');
+    setDenominatorKey(field.denominatorKey || '');
+    setFallbackDenominatorKey(field.fallbackDenominatorKey || '');
+    setFixedDenominatorValue(field.fixedDenominatorValue !== undefined ? String(field.fixedDenominatorValue) : '');
+    setUseFixedDenominator(field.fixedDenominatorValue !== undefined);
+    setDecimalPlaces(field.decimalPlaces ?? 2);
+    setDurationUnit(field.durationUnit || 'hours');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
+    setLabel('');
+    setPlaceholder('');
+    setDefaultValue('');
+    setType('text');
+    setRequired(false);
+    setUseCurrentTime(false);
+    setNumeratorKey('');
+    setDenominatorKey('');
+    setFallbackDenominatorKey('');
+    setFixedDenominatorValue('');
+    setUseFixedDenominator(false);
+    setDecimalPlaces(2);
+    setDurationUnit('hours');
+  };
+
+  const handleSaveEdit = () => {
+    if (!label.trim() || editingIndex === null) return;
+
+    const fieldKey = label.trim().replace(/\s+/g, '-').toLowerCase();
+    if (fields.some((f, i) => i !== editingIndex && f.key === fieldKey)) {
+      showToast('参数名称重复，请修改参数名称');
+      return;
+    }
+
+    let parsedDefault: string | number | boolean | undefined;
+    if (!isCalc && defaultValue.trim() !== '') {
+      if (type === 'number' || type === 'percent') {
+        parsedDefault = parseFloat(defaultValue);
+      } else if (type === 'boolean') {
+        parsedDefault = defaultValue === 'true' || defaultValue === '1';
+      } else {
+        parsedDefault = defaultValue;
+      }
+    }
+
+    const updatedField: ParamField = {
+      key: fieldKey,
+      label: label.trim(),
+      placeholder: placeholder.trim() || `请输入${label}`,
+      type: isCalc ? 'number' : type,
+      required,
+      defaultValue: parsedDefault,
+      useCurrentTime: isDatetime ? useCurrentTime : undefined,
+      calculationType: type === 'calc-percentage' ? 'percentage' : type === 'calc-duration' ? 'duration' : undefined,
+      numeratorKey: isCalc ? numeratorKey : undefined,
+      denominatorKey: isCalc && !useFixedDenominator ? denominatorKey : undefined,
+      fallbackDenominatorKey: type === 'calc-duration' && !useFixedDenominator ? fallbackDenominatorKey : undefined,
+      fixedDenominatorValue: isCalc && useFixedDenominator ? parseFloat(fixedDenominatorValue) : undefined,
+      decimalPlaces: isCalc ? decimalPlaces : undefined,
+      durationUnit: type === 'calc-duration' ? durationUnit : undefined,
+    };
+
+    onUpdate(editingIndex, updatedField);
+    handleCancelEdit();
+  };
+
+  const handleAddOrSave = () => {
+    if (editingIndex !== null) {
+      handleSaveEdit();
+    } else {
+      handleAdd();
+    }
+  };
 
   return (
     <div>
@@ -162,13 +259,35 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
             <span className="text-sm text-gray-700">当前时间</span>
           </label>
         )}
+        {editingIndex !== null && (
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+          >
+            取消
+          </button>
+        )}
         <button
           type="button"
-          onClick={handleAdd}
-          className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1 text-sm"
+          onClick={handleAddOrSave}
+          className={`px-3 py-2 text-white rounded-lg transition-colors flex items-center gap-1 text-sm ${
+            editingIndex !== null
+              ? 'bg-blue-600 hover:bg-blue-700'
+              : 'bg-green-600 hover:bg-green-700'
+          }`}
         >
-          <PlusCircle className="w-4 h-4" />
-          添加
+          {editingIndex !== null ? (
+            <>
+              <Save className="w-4 h-4" />
+              保存修改
+            </>
+          ) : (
+            <>
+              <PlusCircle className="w-4 h-4" />
+              添加
+            </>
+          )}
         </button>
       </div>
 
@@ -189,19 +308,34 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
               </select>
             </div>
             {type === 'calc-duration' ? (
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-gray-500">结束时间</label>
-                <select
-                  value={denominatorKey}
-                  onChange={(e) => setDenominatorKey(e.target.value)}
-                  className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  <option value="">选择结束时间</option>
-                  {fields.filter((f) => f.key !== numeratorKey && f.calculationType === undefined).map((f) => (
-                    <option key={f.key} value={f.key}>{f.label}</option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">结束时间</label>
+                  <select
+                    value={denominatorKey}
+                    onChange={(e) => setDenominatorKey(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">选择结束时间</option>
+                    {fields.filter((f) => f.key !== numeratorKey && f.calculationType === undefined).map((f) => (
+                      <option key={f.key} value={f.key}>{f.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">回退时间（结束时间为空时使用）</label>
+                  <select
+                    value={fallbackDenominatorKey}
+                    onChange={(e) => setFallbackDenominatorKey(e.target.value)}
+                    className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">无回退</option>
+                    {fields.filter((f) => f.key !== numeratorKey && f.key !== denominatorKey && f.calculationType === undefined).map((f) => (
+                      <option key={f.key} value={f.key}>{f.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
             ) : (
               <>
                 <div className="flex flex-col gap-1">
@@ -287,7 +421,7 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
             <p className="text-xs text-blue-600">
               {type === 'calc-percentage'
                 ? `计算公式: ${numeratorKey ? fields.find(f => f.key === numeratorKey)?.label || '分子' : '分子'} / ${useFixedDenominator ? fixedDenominatorValue : denominatorKey ? fields.find(f => f.key === denominatorKey)?.label || '分母' : '分母'} × 100%`
-                : `计算公式: 结束时间 - 开始时间`}
+                : `计算公式: 结束时间${fallbackDenominatorKey ? `（优先${fields.find(f => f.key === denominatorKey)?.label || '结束时间'}，无则用${fields.find(f => f.key === fallbackDenominatorKey)?.label || '回退时间'}）` : ''} - 开始时间`}
             </p>
           )}
         </div>
@@ -351,10 +485,20 @@ export function ParamFieldEditor({ fields, onAdd, onRemove, onMove, showRequired
                   默认: {String(field.defaultValue)}
                 </span>
               )}
+              {onUpdate && (
+                <button
+                  type="button"
+                  onClick={() => handleEdit(index)}
+                  className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                  title="编辑"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onRemove(index)}
-                className="ml-auto p-1 text-gray-400 hover:text-red-500 transition-colors"
+                className="p-1 text-gray-400 hover:text-red-500 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
